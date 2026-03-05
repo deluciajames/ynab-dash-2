@@ -1,11 +1,21 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { ChevronDown, ChevronRight, Target, DollarSign, PiggyBank, TrendingUp, TrendingDown, X, Loader2, RefreshCw } from 'lucide-react';
+import { PiggyBank, X, Loader2, RefreshCw } from 'lucide-react';
 import { ApiKeyDialog } from './components/ApiKeyDialog';
 import { BudgetSelector } from './components/BudgetSelector';
+import { TargetCalculator } from './components/TargetCalculator';
 import { useApiKey, useBudgetId } from './hooks/useApiKey';
 import { fetchAllMonthDetails } from './api/ynab';
 import { transformYnabData, type Category, type CategoryGroup } from './api/transform';
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Math.abs(value));
+}
 
 function App() {
   const { apiKey, setApiKey, clearApiKey } = useApiKey();
@@ -14,11 +24,7 @@ function App() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [groups, setGroups] = useState<CategoryGroup[]>([]);
   const [availableMonths, setAvailableMonths] = useState<string[]>([]);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
-  const [monthlyIncome, setMonthlyIncome] = useState<number>(5000);
-  const [plannedSavings, setPlannedSavings] = useState<number>(0);
-  const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -36,10 +42,6 @@ function App() {
       setCategories(newCats);
       setGroups(newGroups);
       setAvailableMonths(newMonths);
-      if (newMonths.length > 0) {
-        const startIdx = Math.max(0, newMonths.length - 6);
-        setDateRange({ start: newMonths[startIdx], end: newMonths[newMonths.length - 1] });
-      }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load budget data');
     } finally {
@@ -59,79 +61,6 @@ function App() {
     setCategories([]);
     setGroups([]);
     setAvailableMonths([]);
-    setDateRange({ start: '', end: '' });
-  };
-
-  const kpiValues = useMemo(() => {
-    const totalTargets = categories
-      .filter(c => c.type !== 'Income')
-      .reduce((sum, c) => sum + c.target, 0);
-    const remaining = monthlyIncome - totalTargets - plannedSavings;
-    return { targets: totalTargets, income: monthlyIncome, savings: plannedSavings, remaining };
-  }, [categories, monthlyIncome, plannedSavings]);
-
-  const visibleMonths = useMemo(() => {
-    const startIdx = availableMonths.indexOf(dateRange.start);
-    const endIdx = availableMonths.indexOf(dateRange.end);
-    if (startIdx === -1 || endIdx === -1) return availableMonths;
-    return availableMonths.slice(startIdx, endIdx + 1);
-  }, [dateRange, availableMonths]);
-
-  const groupedCategories = useMemo(() => {
-    const grouped: Record<string, Category[]> = {};
-    groups.forEach(g => {
-      grouped[g.id] = categories.filter(c => c.groupId === g.id);
-    });
-    return grouped;
-  }, [categories, groups]);
-
-  const groupTotals = useMemo(() => {
-    const totals: Record<string, { average: number; monthlyTotals: Record<string, number>; targetSum: number }> = {};
-    groups.forEach(g => {
-      const groupCats = groupedCategories[g.id] || [];
-      const monthlyTotals: Record<string, number> = {};
-      availableMonths.forEach(m => {
-        monthlyTotals[m] = groupCats.reduce((sum, c) => sum + (c.monthlyData[m] || 0), 0);
-      });
-      totals[g.id] = {
-        average: groupCats.reduce((sum, c) => sum + c.average, 0),
-        monthlyTotals,
-        targetSum: groupCats.reduce((sum, c) => sum + c.target, 0),
-      };
-    });
-    return totals;
-  }, [groupedCategories, groups, availableMonths]);
-
-  const toggleGroup = (groupId: string) => {
-    setCollapsedGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(groupId)) next.delete(groupId);
-      else next.add(groupId);
-      return next;
-    });
-  };
-
-  const updateTarget = (categoryId: string, newTarget: number) => {
-    setCategories(prev => prev.map(c => c.id === categoryId ? { ...c, target: newTarget } : c));
-  };
-
-  const updateCategoryField = (categoryId: string, field: 'type' | 'frequency', value: string) => {
-    setCategories(prev => prev.map(c => c.id === categoryId ? { ...c, [field]: value } : c));
-  };
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(Math.abs(value));
-  };
-
-  const getCellColor = (value: number, isIncome: boolean) => {
-    if (value === 0) return 'text-gray-400';
-    if (isIncome) return value > 0 ? 'text-emerald-600' : 'text-red-500';
-    return value < 0 ? 'text-gray-900' : 'text-emerald-600';
   };
 
   const chartData = useMemo(() => {
@@ -241,233 +170,11 @@ function App() {
         )}
 
         {hasData && !isLoadingData && !loadError && (
-          <>
-            <div className="grid grid-cols-4 gap-4 mb-6">
-              <div className="bg-white rounded-lg border border-slate-200 p-5">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                    <Target className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <span className="text-sm font-medium text-slate-600">Total Targets</span>
-                </div>
-                <div className="text-3xl font-bold text-slate-900">{formatCurrency(kpiValues.targets)}</div>
-                <p className="text-xs text-slate-500 mt-1">Sum of all monthly targets</p>
-              </div>
-
-              <div className="bg-white rounded-lg border border-slate-200 p-5">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
-                    <DollarSign className="w-5 h-5 text-emerald-600" />
-                  </div>
-                  <span className="text-sm font-medium text-slate-600">Monthly Income</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-3xl font-bold text-slate-900">$</span>
-                  <input
-                    type="number"
-                    value={monthlyIncome}
-                    onChange={(e) => setMonthlyIncome(Number(e.target.value))}
-                    className="text-3xl font-bold text-slate-900 border-0 border-b-2 border-slate-200 bg-transparent w-32 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-                <p className="text-xs text-slate-500 mt-1">Your typical monthly income</p>
-              </div>
-
-              <div className="bg-white rounded-lg border border-slate-200 p-5">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                    <PiggyBank className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <span className="text-sm font-medium text-slate-600">Planned Savings</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-3xl font-bold text-slate-900">$</span>
-                  <input
-                    type="number"
-                    value={plannedSavings}
-                    onChange={(e) => setPlannedSavings(Number(e.target.value))}
-                    className="text-3xl font-bold text-slate-900 border-0 border-b-2 border-slate-200 bg-transparent w-32 focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-                <p className="text-xs text-slate-500 mt-1">Monthly savings/investing transfer</p>
-              </div>
-
-              <div className={`rounded-lg border-2 p-5 ${kpiValues.remaining >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
-                <div className="flex items-center gap-3 mb-3">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${kpiValues.remaining >= 0 ? 'bg-emerald-100' : 'bg-red-100'}`}>
-                    {kpiValues.remaining >= 0 ? (
-                      <TrendingUp className="w-5 h-5 text-emerald-600" />
-                    ) : (
-                      <TrendingDown className="w-5 h-5 text-red-600" />
-                    )}
-                  </div>
-                  <span className="text-sm font-medium text-slate-600">Remaining</span>
-                </div>
-                <div className={`text-3xl font-bold ${kpiValues.remaining >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {kpiValues.remaining >= 0 ? '+' : '-'}{formatCurrency(kpiValues.remaining)}
-                </div>
-                <p className="text-xs text-slate-500 mt-1">
-                  {kpiValues.remaining >= 0 ? 'Available to assign' : 'Over budget'}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex gap-4 mb-6 items-center">
-              <span className="text-sm font-medium text-slate-600">Date Range:</span>
-              <select
-                value={dateRange.start}
-                onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
-              >
-                {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-              <span className="text-slate-400">to</span>
-              <select
-                value={dateRange.end}
-                onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
-              >
-                {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-
-            <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="text-left py-3 px-4 font-semibold text-slate-700 sticky left-0 bg-slate-50 min-w-[280px]">Category</th>
-                      <th className="text-left py-3 px-3 font-semibold text-slate-700 min-w-[100px]">Type</th>
-                      <th className="text-left py-3 px-3 font-semibold text-slate-700 min-w-[100px]">Frequency</th>
-                      <th className="text-right py-3 px-3 font-semibold text-blue-700 bg-blue-50 min-w-[100px]">Target</th>
-                      <th className="text-right py-3 px-3 font-semibold text-slate-700 bg-slate-100 min-w-[90px]">Average</th>
-                      {visibleMonths.map(month => (
-                        <th key={month} className="text-right py-3 px-3 font-semibold text-slate-700 min-w-[90px]">
-                          {month.split(' ')[0]}
-                        </th>
-                      ))}
-                      <th className="text-right py-3 px-3 font-semibold text-slate-700 bg-slate-100 min-w-[100px]">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {groups.map(group => {
-                      const groupCats = groupedCategories[group.id] || [];
-                      const isCollapsed = collapsedGroups.has(group.id);
-                      const totals = groupTotals[group.id];
-
-                      return (
-                        <React.Fragment key={group.id}>
-                          <tr
-                            className="bg-slate-100 border-b border-slate-200 cursor-pointer hover:bg-slate-150"
-                            onClick={() => toggleGroup(group.id)}
-                          >
-                            <td className="py-2.5 px-4 font-semibold text-slate-800 sticky left-0 bg-slate-100">
-                              <div className="flex items-center gap-2">
-                                {isCollapsed ? <ChevronRight className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-                                <span>{group.emoji}</span>
-                                <span>{group.name}</span>
-                              </div>
-                            </td>
-                            <td className="py-2.5 px-3 text-slate-500">—</td>
-                            <td className="py-2.5 px-3 text-slate-500">—</td>
-                            <td className="py-2.5 px-3 text-right font-semibold text-blue-700 bg-blue-50/50">
-                              {group.isIncome ? '—' : formatCurrency(totals?.targetSum || 0)}
-                            </td>
-                            <td className={`py-2.5 px-3 text-right font-semibold bg-slate-100 ${getCellColor(totals?.average || 0, group.isIncome)}`}>
-                              {formatCurrency(totals?.average || 0)}
-                            </td>
-                            {visibleMonths.map(month => (
-                              <td key={month} className={`py-2.5 px-3 text-right font-semibold ${getCellColor(totals?.monthlyTotals[month] || 0, group.isIncome)}`}>
-                                {formatCurrency(totals?.monthlyTotals[month] || 0)}
-                              </td>
-                            ))}
-                            <td className={`py-2.5 px-3 text-right font-semibold bg-slate-100 ${getCellColor(groupCats.reduce((s, c) => s + c.total, 0), group.isIncome)}`}>
-                              {formatCurrency(groupCats.reduce((s, c) => s + c.total, 0))}
-                            </td>
-                          </tr>
-
-                          {!isCollapsed && groupCats.map(category => (
-                            <tr
-                              key={category.id}
-                              className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer"
-                              onClick={() => setSelectedCategory(category)}
-                            >
-                              <td className="py-2 px-4 pl-10 text-slate-700 sticky left-0 bg-white">{category.name}</td>
-                              <td className="py-2 px-3" onClick={(e) => e.stopPropagation()}>
-                                <select
-                                  value={category.type}
-                                  onChange={(e) => updateCategoryField(category.id, 'type', e.target.value)}
-                                  className="h-7 text-xs bg-transparent border border-slate-200 rounded px-2"
-                                >
-                                  <option value="Income">Income</option>
-                                  <option value="Expense">Expense</option>
-                                  <option value="Savings">Savings</option>
-                                  <option value="Credit Card">Credit Card</option>
-                                </select>
-                              </td>
-                              <td className="py-2 px-3" onClick={(e) => e.stopPropagation()}>
-                                <select
-                                  value={category.frequency}
-                                  onChange={(e) => updateCategoryField(category.id, 'frequency', e.target.value)}
-                                  className="h-7 text-xs bg-transparent border border-slate-200 rounded px-2"
-                                >
-                                  <option value="Fixed">Fixed</option>
-                                  <option value="Flexible">Flexible</option>
-                                  <option value="Monthly">Monthly</option>
-                                  <option value="Annual">Annual</option>
-                                  <option value="Ad-Hoc">Ad-Hoc</option>
-                                </select>
-                              </td>
-                              <td className="py-2 px-3 bg-blue-50/30" onClick={(e) => e.stopPropagation()}>
-                                {category.type === 'Income' ? (
-                                  <span className="text-slate-400 text-right block">—</span>
-                                ) : (
-                                  <input
-                                    type="number"
-                                    value={category.target}
-                                    onChange={(e) => updateTarget(category.id, Number(e.target.value))}
-                                    className="h-7 text-xs text-right w-20 ml-auto block bg-white border border-blue-200 rounded px-2"
-                                  />
-                                )}
-                              </td>
-                              <td className={`py-2 px-3 text-right bg-slate-50 ${getCellColor(category.average, group.isIncome)}`}>
-                                {formatCurrency(category.average)}
-                              </td>
-                              {visibleMonths.map(month => (
-                                <td key={month} className={`py-2 px-3 text-right ${getCellColor(category.monthlyData[month] || 0, group.isIncome)}`}>
-                                  {formatCurrency(category.monthlyData[month] || 0)}
-                                </td>
-                              ))}
-                              <td className={`py-2 px-3 text-right bg-slate-50 ${getCellColor(category.total, group.isIncome)}`}>
-                                {formatCurrency(category.total)}
-                              </td>
-                            </tr>
-                          ))}
-                        </React.Fragment>
-                      );
-                    })}
-
-                    <tr className="bg-slate-800 text-white font-semibold">
-                      <td className="py-3 px-4 sticky left-0 bg-slate-800">Net Income</td>
-                      <td className="py-3 px-3">—</td>
-                      <td className="py-3 px-3">—</td>
-                      <td className="py-3 px-3 text-right bg-slate-700">{formatCurrency(kpiValues.remaining)}</td>
-                      <td className="py-3 px-3 text-right bg-slate-700">{formatCurrency(categories.reduce((s, c) => s + c.average, 0))}</td>
-                      {visibleMonths.map(month => {
-                        const monthTotal = categories.reduce((s, c) => s + (c.monthlyData[month] || 0), 0);
-                        return (
-                          <td key={month} className={`py-3 px-3 text-right ${monthTotal >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {formatCurrency(monthTotal)}
-                          </td>
-                        );
-                      })}
-                      <td className="py-3 px-3 text-right bg-slate-700">{formatCurrency(categories.reduce((s, c) => s + c.total, 0))}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </>
+          <TargetCalculator
+            categories={categories}
+            groups={groups}
+            onSelectCategory={setSelectedCategory}
+          />
         )}
       </main>
 
@@ -491,8 +198,8 @@ function App() {
                   <p className="text-xl font-bold text-slate-900">{formatCurrency(selectedCategory.average)}</p>
                 </div>
                 <div className="p-4 bg-blue-50 rounded-lg">
-                  <p className="text-xs text-blue-600 mb-1">Target</p>
-                  <p className="text-xl font-bold text-blue-700">{formatCurrency(selectedCategory.target)}</p>
+                  <p className="text-xs text-blue-600 mb-1">Total</p>
+                  <p className="text-xl font-bold text-blue-700">{formatCurrency(selectedCategory.total)}</p>
                 </div>
               </div>
 
@@ -510,14 +217,17 @@ function App() {
               </div>
 
               <div className="space-y-3">
-                <p className="text-sm font-medium text-slate-700">Insights</p>
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                  <p className="text-sm text-amber-800">
-                    {Math.abs(selectedCategory.average) > selectedCategory.target
-                      ? `Average exceeds target by ${formatCurrency(Math.abs(selectedCategory.average) - selectedCategory.target)}`
-                      : `On track! Target is ${formatCurrency(selectedCategory.target - Math.abs(selectedCategory.average))} above average`
-                    }
-                  </p>
+                <p className="text-sm font-medium text-slate-700">Monthly Breakdown</p>
+                <div className="space-y-1">
+                  {availableMonths.map(m => {
+                    const val = Math.abs(selectedCategory.monthlyData[m] || 0);
+                    return (
+                      <div key={m} className="flex justify-between text-sm py-1 border-b border-slate-100">
+                        <span className="text-slate-600">{m}</span>
+                        <span className="font-medium text-slate-900">{formatCurrency(val)}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
