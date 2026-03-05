@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { PiggyBank, X, Loader2, RefreshCw } from 'lucide-react';
+import { PiggyBank, X, Loader2, RefreshCw, Clock } from 'lucide-react';
 import { ApiKeyDialog } from './components/ApiKeyDialog';
 import { BudgetSelector } from './components/BudgetSelector';
 import { TargetCalculator } from './components/TargetCalculator';
 import { useApiKey, useBudgetId } from './hooks/useApiKey';
+import { useCachedBudgetData, formatLastUpdated } from './hooks/useCachedBudgetData';
 import { fetchAllMonthDetails } from './api/ynab';
 import { transformYnabData, type Category, type CategoryGroup } from './api/transform';
 
@@ -20,16 +21,18 @@ function formatCurrency(value: number): string {
 function App() {
   const { apiKey, setApiKey, clearApiKey } = useApiKey();
   const { budgetId, setBudgetId, clearBudgetId } = useBudgetId();
+  const { loadCached, saveData, clearData } = useCachedBudgetData();
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [groups, setGroups] = useState<CategoryGroup[]>([]);
   const [availableMonths, setAvailableMonths] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
 
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadBudgetData = useCallback(async () => {
+  const refreshFromApi = useCallback(async () => {
     if (!apiKey || !budgetId) return;
 
     setIsLoadingData(true);
@@ -42,25 +45,39 @@ function App() {
       setCategories(newCats);
       setGroups(newGroups);
       setAvailableMonths(newMonths);
+
+      saveData(budgetId, newCats, newGroups, newMonths);
+      setLastUpdated(Date.now());
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load budget data');
     } finally {
       setIsLoadingData(false);
     }
-  }, [apiKey, budgetId]);
+  }, [apiKey, budgetId, saveData]);
 
   useEffect(() => {
-    if (apiKey && budgetId) {
-      loadBudgetData();
+    if (!apiKey || !budgetId) return;
+
+    const cached = loadCached(budgetId);
+    if (cached) {
+      setCategories(cached.categories);
+      setGroups(cached.groups);
+      setAvailableMonths(cached.availableMonths);
+      setLastUpdated(cached.lastUpdated);
+      setLoadError(null);
+    } else {
+      refreshFromApi();
     }
-  }, [apiKey, budgetId, loadBudgetData]);
+  }, [apiKey, budgetId]);
 
   const handleDisconnect = () => {
     clearApiKey();
     clearBudgetId();
+    clearData();
     setCategories([]);
     setGroups([]);
     setAvailableMonths([]);
+    setLastUpdated(null);
   };
 
   const chartData = useMemo(() => {
@@ -89,15 +106,23 @@ function App() {
           </div>
           <div className="flex items-center gap-3">
             {isConnected && budgetId && (
-              <button
-                onClick={loadBudgetData}
-                disabled={isLoadingData}
-                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50"
-                title="Refresh data from YNAB"
-              >
-                <RefreshCw className={`w-4 h-4 ${isLoadingData ? 'animate-spin' : ''}`} />
-                Refresh
-              </button>
+              <div className="flex items-center gap-2">
+                {lastUpdated && !isLoadingData && (
+                  <span className="flex items-center gap-1 text-xs text-slate-400">
+                    <Clock className="w-3 h-3" />
+                    {formatLastUpdated(lastUpdated)}
+                  </span>
+                )}
+                <button
+                  onClick={refreshFromApi}
+                  disabled={isLoadingData}
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50"
+                  title="Refresh data from YNAB"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isLoadingData ? 'animate-spin' : ''}`} />
+                  Refresh
+                </button>
+              </div>
             )}
             {isConnected && (
               <BudgetSelector
@@ -116,7 +141,7 @@ function App() {
       </header>
 
       <main className="p-6 max-w-[1800px] mx-auto">
-        {isLoadingData && (
+        {isLoadingData && !hasData && (
           <div className="flex flex-col items-center justify-center py-20">
             <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-4" />
             <p className="text-slate-600">Loading your budget data from YNAB...</p>
@@ -129,7 +154,7 @@ function App() {
               <p className="text-red-800 font-medium mb-2">Failed to load data</p>
               <p className="text-red-600 text-sm mb-4">{loadError}</p>
               <button
-                onClick={loadBudgetData}
+                onClick={refreshFromApi}
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
               >
                 Try Again
@@ -169,7 +194,7 @@ function App() {
           </div>
         )}
 
-        {hasData && !isLoadingData && !loadError && (
+        {hasData && !loadError && (
           <TargetCalculator
             categories={categories}
             groups={groups}

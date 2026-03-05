@@ -22,10 +22,12 @@ A React-based budget calculator that connects to the YNAB API and uses percentil
 1. User enters YNAB Personal Access Token (stored in browser localStorage)
 2. App fetches available budgets from YNAB API
 3. User selects a budget (also persisted in localStorage)
-4. App fetches last 12 months of budget data via individual month detail endpoints
-5. Transform layer extracts categories, groups, and monthly spending data
-6. Percentile engine calculates P50/P75/P90, detects sinking funds, computes buffer amounts
-7. TargetCalculator component renders the report with interactive confidence toggle
+4. App checks localStorage cache for budget data; if cached, loads instantly without API call
+5. On first load or explicit "Refresh" click, fetches last 12 months via YNAB API, then caches the result
+6. Transform layer extracts categories, groups, and monthly spending data
+7. Percentile engine calculates P50/P75/P90, detects sinking funds, computes buffer amounts
+8. TargetCalculator component renders the report with interactive confidence toggle
+9. "Last updated" timestamp shown next to Refresh button so user knows data freshness
 
 ## Project Structure
 - `src/main.tsx` - Application entry point
@@ -34,6 +36,7 @@ A React-based budget calculator that connects to the YNAB API and uses percentil
 - `src/api/transform.ts` - Transforms YNAB API responses into Category/CategoryGroup types
 - `src/api/percentiles.ts` - Percentile calculation engine (P50/P75/P90, sinking fund detection, buffer math)
 - `src/hooks/useApiKey.ts` - React hooks for API key and budget ID localStorage persistence
+- `src/hooks/useCachedBudgetData.ts` - Caches transformed budget data in localStorage keyed by budget ID
 - `src/components/TargetCalculator.tsx` - Main report UI with confidence toggle, summary cards, category table
 - `src/components/ApiKeyDialog.tsx` - Token input/connection management dialog
 - `src/components/BudgetSelector.tsx` - Budget picker dropdown
