@@ -1,16 +1,18 @@
 # YNAB Budget Dashboard
 
-A React-based dashboard for visualizing and managing your YNAB (You Need A Budget) export data.
+A React-based dashboard for visualizing and managing your YNAB (You Need A Budget) data via the YNAB API.
 
 ## Features
 
-- **CSV Upload**: Upload your YNAB Reports Export and automatically parse it
-- **Smart Category Detection**: Automatically identifies Category Groups vs Categories using sum-matching
+- **YNAB API Integration**: Connect with your Personal Access Token to import budget data directly
+- **Persistent Connection**: Your API token is stored locally in the browser so you don't need to re-enter it
+- **Budget Selection**: Choose from your available YNAB budgets
+- **Smart Category Detection**: Automatically identifies Category Groups vs Categories
 - **Intelligent Target Calculation**:
-  - `[MONTH]` prefix (e.g., `[JAN]`) → Annual charge, target = charge ÷ 12
-  - `[number]` prefix (e.g., `[1]`) → Monthly fixed charge, target = most recent amount
-  - `[x]` prefix or ✅ emoji → Completed/cancelled, target = $0
-  - `[Flex]` prefix → Flexible expense
+  - `[MONTH]` prefix (e.g., `[JAN]`) - Annual charge, target = charge / 12
+  - `[number]` prefix (e.g., `[1]`) - Monthly fixed charge, target = most recent amount
+  - `[x]` prefix or checkmark emoji - Completed/cancelled, target = $0
+  - `[Flex]` prefix - Flexible expense
 - **KPI Boxes**: Track Total Targets, Monthly Income, Planned Savings, and Remaining budget
 - **Collapsible Groups**: Expand/collapse category groups for cleaner viewing
 - **Side Panel**: Click any category to see charts and insights
@@ -19,9 +21,9 @@ A React-based dashboard for visualizing and managing your YNAB (You Need A Budge
 ## Getting Started
 
 ### Replit
-1. Create a new Replit with the "React TypeScript" template
-2. Upload these files
-3. Click "Run"
+1. Click "Run" to start the development server
+2. Click "Connect to YNAB" and enter your Personal Access Token
+3. Select a budget to view your data
 
 ### Local Development
 ```bash
@@ -31,11 +33,13 @@ npm run dev
 
 ## Usage
 
-1. Export your YNAB data as a CSV (Reports → Income vs Expense)
-2. Click "Upload CSV" in the dashboard
-3. Set your Monthly Income and Planned Savings
-4. Adjust targets as needed
-5. Click on categories to see detailed charts
+1. Get a Personal Access Token from [YNAB Developer Settings](https://app.ynab.com/settings/developer)
+2. Click "Connect to YNAB" in the dashboard
+3. Paste your token and click Connect
+4. Select a budget from the dropdown
+5. Set your Monthly Income and Planned Savings
+6. Adjust targets as needed
+7. Click on categories to see detailed charts
 
 ## Tech Stack
 
