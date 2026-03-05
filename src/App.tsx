@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight, Target, DollarSign, PiggyBank, TrendingUp, T
 import { ApiKeyDialog } from './components/ApiKeyDialog';
 import { BudgetSelector } from './components/BudgetSelector';
 import { useApiKey, useBudgetId } from './hooks/useApiKey';
-import { fetchBudgetMonths } from './api/ynab';
+import { fetchAllMonthDetails } from './api/ynab';
 import { transformYnabData, type Category, type CategoryGroup } from './api/transform';
 
 function App() {
@@ -30,7 +30,7 @@ function App() {
     setLoadError(null);
 
     try {
-      const months = await fetchBudgetMonths(apiKey, budgetId);
+      const months = await fetchAllMonthDetails(apiKey, budgetId);
       const { categories: newCats, groups: newGroups, availableMonths: newMonths } = transformYnabData(months);
 
       setCategories(newCats);

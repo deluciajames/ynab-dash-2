@@ -59,12 +59,32 @@ export async function fetchBudgets(token: string): Promise<YnabBudgetSummary[]> 
   return data.budgets;
 }
 
-export async function fetchBudgetMonths(token: string, budgetId: string): Promise<YnabMonthDetail[]> {
-  const data = await ynabFetch<{ months: YnabMonthDetail[] }>(
+export async function fetchBudgetMonthsList(token: string, budgetId: string): Promise<{ month: string }[]> {
+  const data = await ynabFetch<{ months: { month: string }[] }>(
     `/budgets/${budgetId}/months`,
     token
   );
   return data.months;
+}
+
+export async function fetchAllMonthDetails(
+  token: string,
+  budgetId: string,
+  maxMonths: number = 12
+): Promise<YnabMonthDetail[]> {
+  const monthsList = await fetchBudgetMonthsList(token, budgetId);
+
+  const validMonths = monthsList
+    .map(m => m.month)
+    .filter(m => m !== '0001-01-01')
+    .sort()
+    .slice(-maxMonths);
+
+  const details = await Promise.all(
+    validMonths.map(month => fetchMonthDetail(token, budgetId, month))
+  );
+
+  return details;
 }
 
 export async function fetchMonthDetail(
