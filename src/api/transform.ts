@@ -131,6 +131,9 @@ export function transformYnabData(months: YnabMonthDetail[]): {
     groupId: string;
     groupName: string;
     monthlyData: Record<string, number>;
+    goalTarget: number | null;
+    goalType: string | null;
+    goalCadence: number | null;
   }>();
 
   for (const monthDetail of sortedMonths) {
@@ -154,12 +157,21 @@ export function transformYnabData(months: YnabMonthDetail[]): {
           groupId: cat.category_group_id,
           groupName: cat.category_group_name,
           monthlyData: {},
+          goalTarget: null,
+          goalType: null,
+          goalCadence: null,
         });
       }
 
       const catData = categoryDataMap.get(cat.id)!;
       const amount = cat.activity / 1000;
       catData.monthlyData[formattedMonth] = amount;
+
+      if (cat.goal_target != null) {
+        catData.goalTarget = cat.goal_target;
+        catData.goalType = cat.goal_type;
+        catData.goalCadence = cat.goal_cadence;
+      }
     }
   }
 
@@ -209,16 +221,31 @@ export function transformYnabData(months: YnabMonthDetail[]): {
         : 'Expense';
 
     const prefixAnalysis = analyzeCategoryPrefix(catData.name, catData.monthlyData);
-    const target = prefixAnalysis.targetOverride !== null
-      ? prefixAnalysis.targetOverride
-      : Math.round(Math.abs(average));
+
+    let target: number;
+    let frequency = prefixAnalysis.frequency;
+
+    if (catData.goalTarget != null && catData.goalTarget > 0) {
+      const goalAmountDollars = catData.goalTarget / 1000;
+      const cadence = catData.goalCadence ?? 1;
+      if (cadence > 1) {
+        target = Math.round(goalAmountDollars / cadence);
+        frequency = 'Annual';
+      } else {
+        target = Math.round(goalAmountDollars);
+      }
+    } else if (prefixAnalysis.targetOverride !== null) {
+      target = prefixAnalysis.targetOverride;
+    } else {
+      target = Math.round(Math.abs(average));
+    }
 
     categories.push({
       id,
       name: catData.name,
       groupId: catData.groupId,
       type,
-      frequency: prefixAnalysis.frequency,
+      frequency,
       monthlyData: catData.monthlyData,
       average,
       total,

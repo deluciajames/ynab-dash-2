@@ -27,6 +27,8 @@ export interface YnabCategory {
   balance: number;
   goal_type: string | null;
   goal_target: number | null;
+  goal_cadence: number | null;
+  goal_months_to_budget: number | null;
 }
 
 export interface YnabMonthDetail {
