@@ -76,9 +76,12 @@ export async function fetchAllMonthDetails(
 ): Promise<YnabMonthDetail[]> {
   const monthsList = await fetchBudgetMonthsList(token, budgetId);
 
+  const now = new Date();
+  const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+
   const validMonths = monthsList
     .map(m => m.month)
-    .filter(m => m !== '0001-01-01')
+    .filter(m => m !== '0001-01-01' && m < currentMonthStr)
     .sort()
     .slice(-maxMonths);
 
