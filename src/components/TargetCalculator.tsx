@@ -93,27 +93,18 @@ function EditableCell({
     );
   }
 
+  const getPercentileValue = (p: 50 | 75 | 90): number => {
+    if (!analysis) return 0;
+    return p === 50 ? analysis.p50 : p === 75 ? analysis.p75 : analysis.p90;
+  };
+
+  const activePercentile = analysis && !analysis.isIrregular
+    ? ([50, 75, 90] as const).find(p => Math.round(value) === Math.round(getPercentileValue(p))) ?? null
+    : null;
+
   return (
     <td className={`py-2 px-2 ${bgClass}`} onClick={e => e.stopPropagation()}>
-      <div className="flex items-center gap-1 justify-end">
-        {showPercentileButtons && analysis && !analysis.isIrregular && (
-          <div className="flex gap-0.5 mr-1">
-            {([50, 75, 90] as const).map(p => (
-              <button
-                key={p}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const val = p === 50 ? analysis.p50 : p === 75 ? analysis.p75 : analysis.p90;
-                  onSave(val);
-                }}
-                className="px-1 py-0.5 text-[10px] font-medium text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                title={`Set to P${p}`}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-        )}
+      <div className="flex items-center gap-1.5 justify-end">
         {isLocked && (
           <button
             onClick={(e) => { e.stopPropagation(); onToggleLock(); }}
@@ -129,6 +120,27 @@ function EditableCell({
         >
           {formatCurrency(value)}
         </span>
+        {showPercentileButtons && analysis && !analysis.isIrregular && (
+          <div className="flex bg-slate-100 rounded p-0.5 ml-0.5">
+            {([50, 75, 90] as const).map(p => (
+              <button
+                key={p}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSave(getPercentileValue(p));
+                }}
+                className={`px-1.5 py-0.5 text-[10px] font-semibold rounded transition-all ${
+                  activePercentile === p
+                    ? 'bg-white text-blue-700 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-600'
+                }`}
+                title={`Set to P${p}`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </td>
   );
