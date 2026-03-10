@@ -2,12 +2,14 @@ import React, { useState, useMemo } from 'react';
 import { ChevronDown, ChevronRight, AlertTriangle, Shield, Clock, TrendingUp } from 'lucide-react';
 import type { Category, CategoryGroup } from '../api/transform';
 import { analyzeBudget, type CategoryAnalysis } from '../api/percentiles';
+import { applySortOrder } from '../hooks/useGroupSortOrder';
 
 type ConfidenceLevel = 50 | 75 | 90;
 
 interface TargetCalculatorProps {
   categories: Category[];
   groups: CategoryGroup[];
+  groupSortOrder: string[];
   onSelectCategory: (category: Category) => void;
 }
 
@@ -20,7 +22,7 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
-export function TargetCalculator({ categories, groups, onSelectCategory }: TargetCalculatorProps) {
+export function TargetCalculator({ categories, groups, groupSortOrder, onSelectCategory }: TargetCalculatorProps) {
   const [confidence, setConfidence] = useState<ConfidenceLevel>(75);
   const [takeHome, setTakeHome] = useState<number | null>(null);
   const [takeHomeInput, setTakeHomeInput] = useState('');
@@ -42,12 +44,17 @@ export function TargetCalculator({ categories, groups, onSelectCategory }: Targe
   const overBudget = takeHome !== null && totalBudget > takeHome;
   const remaining = takeHome !== null ? takeHome - totalBudget : null;
 
-  const expenseGroups = groups.filter(g => !g.isIncome);
+  const expenseGroups = useMemo(
+    () => applySortOrder(groups.filter(g => !g.isIncome), groupSortOrder),
+    [groups, groupSortOrder]
+  );
 
   const groupedAnalyses = useMemo(() => {
     const grouped: Record<string, CategoryAnalysis[]> = {};
     for (const g of expenseGroups) {
-      grouped[g.id] = analysis.categories.filter(a => a.groupId === g.id);
+      grouped[g.id] = analysis.categories
+        .filter(a => a.groupId === g.id)
+        .sort((a, b) => a.categoryName.localeCompare(b.categoryName));
     }
     return grouped;
   }, [analysis, expenseGroups]);

@@ -1,11 +1,13 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { PiggyBank, X, Loader2, RefreshCw, Clock } from 'lucide-react';
+import { PiggyBank, X, Loader2, RefreshCw, Clock, ArrowUpDown } from 'lucide-react';
 import { ApiKeyDialog } from './components/ApiKeyDialog';
 import { BudgetSelector } from './components/BudgetSelector';
 import { TargetCalculator } from './components/TargetCalculator';
+import { SortGroupsModal } from './components/SortGroupsModal';
 import { useApiKey, useBudgetId } from './hooks/useApiKey';
 import { useCachedBudgetData, formatLastUpdated } from './hooks/useCachedBudgetData';
+import { useGroupSortOrder } from './hooks/useGroupSortOrder';
 import { fetchAllMonthDetails } from './api/ynab';
 import { transformYnabData, type Category, type CategoryGroup } from './api/transform';
 
@@ -22,6 +24,8 @@ function App() {
   const { apiKey, setApiKey, clearApiKey } = useApiKey();
   const { budgetId, setBudgetId, clearBudgetId } = useBudgetId();
   const { loadCached, saveData, clearData } = useCachedBudgetData();
+  const { sortOrder, setSortOrder, clearSortOrder } = useGroupSortOrder();
+  const [showSortModal, setShowSortModal] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [groups, setGroups] = useState<CategoryGroup[]>([]);
@@ -74,6 +78,7 @@ function App() {
     clearApiKey();
     clearBudgetId();
     clearData();
+    clearSortOrder();
     setCategories([]);
     setGroups([]);
     setAvailableMonths([]);
@@ -112,6 +117,16 @@ function App() {
                     <Clock className="w-3 h-3" />
                     {formatLastUpdated(lastUpdated)}
                   </span>
+                )}
+                {hasData && (
+                  <button
+                    onClick={() => setShowSortModal(true)}
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+                    title="Sort category groups"
+                  >
+                    <ArrowUpDown className="w-4 h-4" />
+                    Sort
+                  </button>
                 )}
                 <button
                   onClick={refreshFromApi}
@@ -198,10 +213,20 @@ function App() {
           <TargetCalculator
             categories={categories}
             groups={groups}
+            groupSortOrder={sortOrder}
             onSelectCategory={setSelectedCategory}
           />
         )}
       </main>
+
+      {showSortModal && (
+        <SortGroupsModal
+          groups={groups}
+          currentOrder={sortOrder}
+          onSave={setSortOrder}
+          onClose={() => setShowSortModal(false)}
+        />
+      )}
 
       {selectedCategory && (
         <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setSelectedCategory(null)}>

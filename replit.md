@@ -37,6 +37,8 @@ A React-based budget calculator that connects to the YNAB API and uses percentil
 - `src/api/percentiles.ts` - Percentile calculation engine (P50/P75/P90, sinking fund detection, buffer math)
 - `src/hooks/useApiKey.ts` - React hooks for API key and budget ID localStorage persistence
 - `src/hooks/useCachedBudgetData.ts` - Caches transformed budget data in localStorage keyed by budget ID
+- `src/hooks/useGroupSortOrder.ts` - Persists custom category group sort order in localStorage
+- `src/components/SortGroupsModal.tsx` - Drag-and-drop modal for reordering category groups
 - `src/components/TargetCalculator.tsx` - Main report UI with confidence toggle, summary cards, category table
 - `src/components/ApiKeyDialog.tsx` - Token input/connection management dialog
 - `src/components/BudgetSelector.tsx` - Budget picker dropdown
