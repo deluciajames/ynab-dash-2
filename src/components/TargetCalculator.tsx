@@ -173,7 +173,17 @@ export function TargetCalculator({
   onSetOverride,
   onSelectCategory,
 }: TargetCalculatorProps) {
-  const [confidence, setConfidence] = useState<ConfidenceLevel>(75);
+  const [confidence, setConfidenceState] = useState<ConfidenceLevel>(75);
+
+  const setConfidence = (level: ConfidenceLevel) => {
+    setConfidenceState(level);
+    for (const a of analysis.categories) {
+      const ov = overrides[a.categoryId];
+      if (ov && !ov.lockedTarget && ov.target !== undefined) {
+        onSetOverride(a.categoryId, { target: undefined, targetPercentile: undefined });
+      }
+    }
+  };
   const [takeHome, setTakeHome] = useState<number | null>(null);
   const [takeHomeInput, setTakeHomeInput] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -212,7 +222,7 @@ export function TargetCalculator({
 
   const getEffectiveTarget = (a: CategoryAnalysis): number => {
     const ov = overrides[a.categoryId];
-    if (ov?.lockedTarget && ov.target !== undefined) return ov.target;
+    if (ov?.target !== undefined) return ov.target;
     return getBaseTarget(a);
   };
 
@@ -275,7 +285,7 @@ export function TargetCalculator({
   const handleToggleTargetLock = (categoryId: string, currentValue: number) => {
     const ov = overrides[categoryId];
     if (ov?.lockedTarget) {
-      onSetOverride(categoryId, { lockedTarget: false, target: undefined, targetPercentile: undefined });
+      onSetOverride(categoryId, { lockedTarget: false });
     } else {
       onSetOverride(categoryId, { lockedTarget: true, target: currentValue });
     }
