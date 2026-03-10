@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
-import { ChevronDown, ChevronRight, AlertTriangle, Shield, Clock, TrendingUp } from 'lucide-react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { ChevronDown, ChevronRight, AlertTriangle, Shield, Clock, TrendingUp, Lock } from 'lucide-react';
 import type { Category, CategoryGroup } from '../api/transform';
 import { analyzeBudget, type CategoryAnalysis } from '../api/percentiles';
 import { applySortOrder } from '../hooks/useGroupSortOrder';
+import type { OverridesMap, CategoryOverride } from '../hooks/useCategoryOverrides';
 
 type ConfidenceLevel = 50 | 75 | 90;
 
@@ -10,6 +11,8 @@ interface TargetCalculatorProps {
   categories: Category[];
   groups: CategoryGroup[];
   groupSortOrder: string[];
+  overrides: OverridesMap;
+  onSetOverride: (categoryId: string, override: Partial<CategoryOverride>) => void;
   onSelectCategory: (category: Category) => void;
 }
 
@@ -22,7 +25,123 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
-export function TargetCalculator({ categories, groups, groupSortOrder, onSelectCategory }: TargetCalculatorProps) {
+function EditableCell({
+  value,
+  isLocked,
+  onSave,
+  onToggleLock,
+  colorClass,
+  bgClass,
+  analysis,
+  showPercentileButtons,
+}: {
+  value: number;
+  isLocked: boolean;
+  onSave: (val: number) => void;
+  onToggleLock: () => void;
+  colorClass: string;
+  bgClass: string;
+  analysis?: CategoryAnalysis;
+  showPercentileButtons?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  const handleStartEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditValue(String(Math.round(value)));
+    setEditing(true);
+  };
+
+  const handleSave = () => {
+    const num = parseFloat(editValue);
+    if (!isNaN(num) && num >= 0) {
+      onSave(Math.round(num));
+    }
+    setEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleSave();
+    if (e.key === 'Escape') setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <td className={`py-1 px-2 ${bgClass}`} onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-1 justify-end">
+          <span className="text-xs text-slate-400">$</span>
+          <input
+            ref={inputRef}
+            type="number"
+            value={editValue}
+            onChange={e => setEditValue(e.target.value)}
+            onBlur={handleSave}
+            onKeyDown={handleKeyDown}
+            className="w-20 px-1.5 py-1 text-right text-sm border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        </div>
+      </td>
+    );
+  }
+
+  return (
+    <td className={`py-2 px-2 ${bgClass}`} onClick={e => e.stopPropagation()}>
+      <div className="flex items-center gap-1 justify-end">
+        {showPercentileButtons && analysis && !analysis.isIrregular && (
+          <div className="flex gap-0.5 mr-1">
+            {([50, 75, 90] as const).map(p => (
+              <button
+                key={p}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const val = p === 50 ? analysis.p50 : p === 75 ? analysis.p75 : analysis.p90;
+                  onSave(val);
+                }}
+                className="px-1 py-0.5 text-[10px] font-medium text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                title={`Set to P${p}`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        )}
+        {isLocked && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleLock(); }}
+            className="p-0.5 text-amber-500 hover:text-amber-600 transition-colors"
+            title="Unlock (will follow confidence toggle)"
+          >
+            <Lock className="w-3 h-3" />
+          </button>
+        )}
+        <span
+          className={`font-medium cursor-pointer hover:underline ${colorClass}`}
+          onClick={handleStartEdit}
+        >
+          {formatCurrency(value)}
+        </span>
+      </div>
+    </td>
+  );
+}
+
+export function TargetCalculator({
+  categories,
+  groups,
+  groupSortOrder,
+  overrides,
+  onSetOverride,
+  onSelectCategory,
+}: TargetCalculatorProps) {
   const [confidence, setConfidence] = useState<ConfidenceLevel>(75);
   const [takeHome, setTakeHome] = useState<number | null>(null);
   const [takeHomeInput, setTakeHomeInput] = useState('');
@@ -32,17 +151,6 @@ export function TargetCalculator({ categories, groups, groupSortOrder, onSelectC
     () => analyzeBudget(categories, groups),
     [categories, groups]
   );
-
-  const totalAtLevel = confidence === 50
-    ? analysis.totalAtP50
-    : confidence === 75
-      ? analysis.totalAtP75
-      : analysis.totalAtP90;
-
-  const bufferToApply = confidence < 90 ? analysis.totalBuffer : 0;
-  const totalBudget = totalAtLevel + bufferToApply;
-  const overBudget = takeHome !== null && totalBudget > takeHome;
-  const remaining = takeHome !== null ? takeHome - totalBudget : null;
 
   const expenseGroups = useMemo(
     () => applySortOrder(groups.filter(g => !g.isIncome), groupSortOrder),
@@ -59,20 +167,56 @@ export function TargetCalculator({ categories, groups, groupSortOrder, onSelectC
     return grouped;
   }, [analysis, expenseGroups]);
 
+  const getBaseTarget = (a: CategoryAnalysis): number => {
+    if (a.isIrregular) return a.sinkingFundMonthly;
+    return confidence === 50 ? a.p50 : confidence === 75 ? a.p75 : a.p90;
+  };
+
+  const getBaseBuffer = (a: CategoryAnalysis): number => {
+    if (a.isIrregular) return 0;
+    if (confidence === 90) return 0;
+    const base = confidence === 50 ? a.p50 : a.p75;
+    return Math.max(0, a.p90 - base);
+  };
+
+  const getEffectiveTarget = (a: CategoryAnalysis): number => {
+    const ov = overrides[a.categoryId];
+    if (ov?.lockedTarget && ov.target !== undefined) return ov.target;
+    return getBaseTarget(a);
+  };
+
+  const getEffectiveBuffer = (a: CategoryAnalysis): number => {
+    const ov = overrides[a.categoryId];
+    if (ov?.lockedBuffer && ov.buffer !== undefined) return ov.buffer;
+    return getBaseBuffer(a);
+  };
+
   const groupTotals = useMemo(() => {
-    const totals: Record<string, { p50: number; p75: number; p90: number; target: number; buffer: number }> = {};
+    const totals: Record<string, { target: number; buffer: number; p50: number; p75: number; p90: number }> = {};
     for (const g of expenseGroups) {
       const cats = groupedAnalyses[g.id] || [];
       totals[g.id] = {
+        target: cats.reduce((s, a) => s + getEffectiveTarget(a), 0),
+        buffer: cats.reduce((s, a) => s + getEffectiveBuffer(a), 0),
         p50: cats.reduce((s, a) => s + (a.isIrregular ? a.sinkingFundMonthly : a.p50), 0),
         p75: cats.reduce((s, a) => s + (a.isIrregular ? a.sinkingFundMonthly : a.p75), 0),
         p90: cats.reduce((s, a) => s + (a.isIrregular ? a.sinkingFundMonthly : a.p90), 0),
-        target: cats.reduce((s, a) => s + a.recommendedTarget, 0),
-        buffer: cats.reduce((s, a) => s + a.bufferAmount, 0),
       };
     }
     return totals;
-  }, [groupedAnalyses, expenseGroups]);
+  }, [groupedAnalyses, expenseGroups, confidence, overrides]);
+
+  const totalTarget = useMemo(() => {
+    return Object.values(groupTotals).reduce((s, g) => s + g.target, 0);
+  }, [groupTotals]);
+
+  const totalBuffer = useMemo(() => {
+    return Object.values(groupTotals).reduce((s, g) => s + g.buffer, 0);
+  }, [groupTotals]);
+
+  const totalBudget = totalTarget + totalBuffer;
+  const overBudget = takeHome !== null && totalBudget > takeHome;
+  const remaining = takeHome !== null ? takeHome - totalBudget : null;
 
   const toggleGroup = (groupId: string) => {
     setCollapsedGroups(prev => {
@@ -89,15 +233,26 @@ export function TargetCalculator({ categories, groups, groupSortOrder, onSelectC
     setTakeHome(isNaN(num) || num <= 0 ? null : num);
   };
 
-  const getTargetForLevel = (a: CategoryAnalysis): number => {
-    if (a.isIrregular) return a.sinkingFundMonthly;
-    return confidence === 50 ? a.p50 : confidence === 75 ? a.p75 : a.p90;
+  const handleTargetSave = (categoryId: string, val: number) => {
+    onSetOverride(categoryId, { target: val, lockedTarget: true });
   };
 
-  const getGroupTargetForLevel = (groupId: string): number => {
-    const t = groupTotals[groupId];
-    if (!t) return 0;
-    return confidence === 50 ? t.p50 : confidence === 75 ? t.p75 : t.p90;
+  const handleBufferSave = (categoryId: string, val: number) => {
+    onSetOverride(categoryId, { buffer: val, lockedBuffer: true });
+  };
+
+  const handleToggleTargetLock = (categoryId: string) => {
+    const ov = overrides[categoryId];
+    if (ov?.lockedTarget) {
+      onSetOverride(categoryId, { lockedTarget: false, target: undefined });
+    }
+  };
+
+  const handleToggleBufferLock = (categoryId: string) => {
+    const ov = overrides[categoryId];
+    if (ov?.lockedBuffer) {
+      onSetOverride(categoryId, { lockedBuffer: false, buffer: undefined });
+    }
   };
 
   return (
@@ -155,8 +310,8 @@ export function TargetCalculator({ categories, groups, groupSortOrder, onSelectC
             </div>
             <span className="text-sm font-medium text-slate-600">Monthly Budget</span>
           </div>
-          <div className="text-3xl font-bold text-slate-900">{formatCurrency(totalAtLevel)}</div>
-          <p className="text-xs text-slate-500 mt-1">At {confidence}th percentile</p>
+          <div className="text-3xl font-bold text-slate-900">{formatCurrency(totalTarget)}</div>
+          <p className="text-xs text-slate-500 mt-1">Sum of all category targets</p>
         </div>
 
         <div className="bg-white rounded-lg border border-slate-200 p-5">
@@ -164,10 +319,12 @@ export function TargetCalculator({ categories, groups, groupSortOrder, onSelectC
             <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
               <Shield className="w-5 h-5 text-purple-600" />
             </div>
-            <span className="text-sm font-medium text-slate-600">Recommended Buffer</span>
+            <span className="text-sm font-medium text-slate-600">Total Buffer</span>
           </div>
-          <div className="text-3xl font-bold text-purple-700">{formatCurrency(analysis.totalBuffer)}</div>
-          <p className="text-xs text-slate-500 mt-1">Gap between 75th and 90th across all categories</p>
+          <div className="text-3xl font-bold text-purple-700">{formatCurrency(totalBuffer)}</div>
+          <p className="text-xs text-slate-500 mt-1">
+            {confidence === 90 ? 'No buffer at 90th percentile' : `Gap to 90th from ${confidence}th percentile`}
+          </p>
         </div>
 
         <div className={`rounded-lg border-2 p-5 ${
@@ -205,13 +362,13 @@ export function TargetCalculator({ categories, groups, groupSortOrder, onSelectC
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left py-3 px-4 font-semibold text-slate-700 sticky left-0 bg-slate-50 min-w-[280px]">Category</th>
-                <th className="text-center py-3 px-3 font-semibold text-slate-700 min-w-[90px]">Type</th>
-                <th className={`text-right py-3 px-3 font-semibold min-w-[100px] ${confidence === 50 ? 'text-blue-700 bg-blue-50' : 'text-slate-500'}`}>P50</th>
-                <th className={`text-right py-3 px-3 font-semibold min-w-[100px] ${confidence === 75 ? 'text-blue-700 bg-blue-50' : 'text-slate-500'}`}>P75</th>
-                <th className={`text-right py-3 px-3 font-semibold min-w-[100px] ${confidence === 90 ? 'text-blue-700 bg-blue-50' : 'text-slate-500'}`}>P90</th>
-                <th className="text-right py-3 px-3 font-semibold text-emerald-700 bg-emerald-50 min-w-[120px]">Target</th>
-                <th className="text-right py-3 px-3 font-semibold text-purple-700 bg-purple-50 min-w-[100px]">Buffer</th>
+                <th className="text-left py-3 px-4 font-semibold text-slate-700 sticky left-0 bg-slate-50 min-w-[250px]">Category</th>
+                <th className="text-right py-3 px-2 font-semibold text-emerald-700 bg-emerald-50 min-w-[140px]">Target</th>
+                <th className="text-right py-3 px-2 font-semibold text-purple-700 bg-purple-50 min-w-[140px]">Buffer</th>
+                <th className="text-center py-3 px-3 font-semibold text-slate-700 min-w-[80px]">Type</th>
+                <th className={`text-right py-3 px-3 font-semibold min-w-[90px] ${confidence === 50 ? 'text-blue-700 bg-blue-50' : 'text-slate-500'}`}>P50</th>
+                <th className={`text-right py-3 px-3 font-semibold min-w-[90px] ${confidence === 75 ? 'text-blue-700 bg-blue-50' : 'text-slate-500'}`}>P75</th>
+                <th className={`text-right py-3 px-3 font-semibold min-w-[90px] ${confidence === 90 ? 'text-blue-700 bg-blue-50' : 'text-slate-500'}`}>P90</th>
               </tr>
             </thead>
             <tbody>
@@ -234,6 +391,12 @@ export function TargetCalculator({ categories, groups, groupSortOrder, onSelectC
                           <span>{group.name}</span>
                         </div>
                       </td>
+                      <td className="py-2.5 px-2 text-right font-semibold text-emerald-700 bg-emerald-50/50">
+                        {formatCurrency(gt?.target || 0)}
+                      </td>
+                      <td className="py-2.5 px-2 text-right font-semibold text-purple-700 bg-purple-50/50">
+                        {formatCurrency(gt?.buffer || 0)}
+                      </td>
                       <td className="py-2.5 px-3 text-center text-slate-500">—</td>
                       <td className={`py-2.5 px-3 text-right font-semibold ${confidence === 50 ? 'text-blue-700 bg-blue-50/50' : 'text-slate-500'}`}>
                         {formatCurrency(gt?.p50 || 0)}
@@ -244,16 +407,16 @@ export function TargetCalculator({ categories, groups, groupSortOrder, onSelectC
                       <td className={`py-2.5 px-3 text-right font-semibold ${confidence === 90 ? 'text-blue-700 bg-blue-50/50' : 'text-slate-500'}`}>
                         {formatCurrency(gt?.p90 || 0)}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-semibold text-emerald-700 bg-emerald-50/50">
-                        {formatCurrency(getGroupTargetForLevel(group.id))}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-semibold text-purple-700 bg-purple-50/50">
-                        {formatCurrency(gt?.buffer || 0)}
-                      </td>
                     </tr>
 
                     {!isCollapsed && groupCats.map(a => {
                       const cat = categories.find(c => c.id === a.categoryId);
+                      const effectiveTarget = getEffectiveTarget(a);
+                      const effectiveBuffer = getEffectiveBuffer(a);
+                      const ov = overrides[a.categoryId];
+                      const isTargetLocked = !!(ov?.lockedTarget);
+                      const isBufferLocked = !!(ov?.lockedBuffer);
+
                       return (
                         <tr
                           key={a.categoryId}
@@ -265,6 +428,24 @@ export function TargetCalculator({ categories, groups, groupSortOrder, onSelectC
                               <span>{a.categoryName}</span>
                             </div>
                           </td>
+                          <EditableCell
+                            value={effectiveTarget}
+                            isLocked={isTargetLocked}
+                            onSave={(val) => handleTargetSave(a.categoryId, val)}
+                            onToggleLock={() => handleToggleTargetLock(a.categoryId)}
+                            colorClass="text-emerald-700"
+                            bgClass="bg-emerald-50/30"
+                            analysis={a}
+                            showPercentileButtons={true}
+                          />
+                          <EditableCell
+                            value={effectiveBuffer}
+                            isLocked={isBufferLocked}
+                            onSave={(val) => handleBufferSave(a.categoryId, val)}
+                            onToggleLock={() => handleToggleBufferLock(a.categoryId)}
+                            colorClass="text-purple-700"
+                            bgClass="bg-purple-50/30"
+                          />
                           <td className="py-2 px-3 text-center">
                             {a.isIrregular ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">
@@ -286,12 +467,6 @@ export function TargetCalculator({ categories, groups, groupSortOrder, onSelectC
                           <td className={`py-2 px-3 text-right ${confidence === 90 ? 'text-blue-700 bg-blue-50/30 font-medium' : 'text-slate-500'}`}>
                             {a.isIrregular ? <span className="text-slate-400">—</span> : formatCurrency(a.p90)}
                           </td>
-                          <td className="py-2 px-3 text-right font-medium text-emerald-700 bg-emerald-50/30">
-                            {formatCurrency(getTargetForLevel(a))}
-                          </td>
-                          <td className="py-2 px-3 text-right text-purple-700 bg-purple-50/30">
-                            {a.bufferAmount > 0 ? formatCurrency(a.bufferAmount) : <span className="text-slate-400">—</span>}
-                          </td>
                         </tr>
                       );
                     })}
@@ -301,6 +476,12 @@ export function TargetCalculator({ categories, groups, groupSortOrder, onSelectC
 
               <tr className="bg-slate-800 text-white font-semibold">
                 <td className="py-3 px-4 sticky left-0 bg-slate-800">Total Monthly Budget</td>
+                <td className="py-3 px-2 text-right text-emerald-300">
+                  {formatCurrency(totalTarget)}
+                </td>
+                <td className="py-3 px-2 text-right text-purple-300">
+                  {formatCurrency(totalBuffer)}
+                </td>
                 <td className="py-3 px-3"></td>
                 <td className={`py-3 px-3 text-right ${confidence === 50 ? 'text-blue-300' : 'text-slate-400'}`}>
                   {formatCurrency(analysis.totalAtP50)}
@@ -310,12 +491,6 @@ export function TargetCalculator({ categories, groups, groupSortOrder, onSelectC
                 </td>
                 <td className={`py-3 px-3 text-right ${confidence === 90 ? 'text-blue-300' : 'text-slate-400'}`}>
                   {formatCurrency(analysis.totalAtP90)}
-                </td>
-                <td className="py-3 px-3 text-right text-emerald-300">
-                  {formatCurrency(totalAtLevel)}
-                </td>
-                <td className="py-3 px-3 text-right text-purple-300">
-                  {formatCurrency(analysis.totalBuffer)}
                 </td>
               </tr>
             </tbody>
@@ -328,8 +503,9 @@ export function TargetCalculator({ categories, groups, groupSortOrder, onSelectC
           <strong>How this works:</strong> Percentiles are calculated from your last 12 months of spending.
           The 50th percentile (median) is your lean budget. The 75th is a balanced target that covers most months.
           The 90th is your ceiling. Categories with 4+ zero-spending months are flagged as sinking funds and use
-          an annual accrual approach instead. The buffer is the sum of all 75th-to-90th gaps — a single monthly
-          amount to cover overages without touching savings.
+          an annual accrual approach instead. Click any Target or Buffer value to edit it — edited values show a
+          lock icon and won't change when you switch confidence levels. Click the lock to unlock and follow the
+          master toggle again. Use the small 50/75/90 buttons to quickly set a specific percentile for individual categories.
         </p>
       </div>
     </div>

@@ -6,8 +6,9 @@ A React-based budget calculator that connects to the YNAB API and uses percentil
 ## Core Logic
 - **Regular categories**: Shows P50 (lean), P75 (balanced), P90 (safe) percentiles from spending history
 - **Irregular/sinking fund categories**: Detected when 4+ months have zero spending; uses total annual spend / 12 as a monthly accrual amount
-- **Buffer calculation**: Sum of (P90 - P75) across all regular categories — a single monthly amount to cover overages
-- **Confidence toggle**: Switch between 50th/75th/90th percentile to see how total budget changes
+- **Buffer calculation**: Confidence-aware — gap from selected percentile to P90 (P90-P50 at 50th, P90-P75 at 75th, 0 at 90th)
+- **Confidence toggle**: Master toggle switches all unlocked categories between 50th/75th/90th
+- **Per-category overrides**: Target and Buffer are editable inline; edited values get locked (won't change with master toggle); per-category 50/75/90 buttons for quick percentile assignment
 - **Over-budget warning**: Optional take-home income input triggers a warning if budget exceeds income
 
 ## Tech Stack
@@ -38,6 +39,7 @@ A React-based budget calculator that connects to the YNAB API and uses percentil
 - `src/hooks/useApiKey.ts` - React hooks for API key and budget ID localStorage persistence
 - `src/hooks/useCachedBudgetData.ts` - Caches transformed budget data in localStorage keyed by budget ID
 - `src/hooks/useGroupSortOrder.ts` - Persists custom category group sort order in localStorage
+- `src/hooks/useCategoryOverrides.ts` - Per-category target/buffer overrides with lock state, persisted in localStorage
 - `src/components/SortGroupsModal.tsx` - Drag-and-drop modal for reordering category groups
 - `src/components/TargetCalculator.tsx` - Main report UI with confidence toggle, summary cards, category table
 - `src/components/ApiKeyDialog.tsx` - Token input/connection management dialog

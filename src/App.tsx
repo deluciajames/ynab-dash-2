@@ -8,6 +8,7 @@ import { SortGroupsModal } from './components/SortGroupsModal';
 import { useApiKey, useBudgetId } from './hooks/useApiKey';
 import { useCachedBudgetData, formatLastUpdated } from './hooks/useCachedBudgetData';
 import { useGroupSortOrder } from './hooks/useGroupSortOrder';
+import { useCategoryOverrides } from './hooks/useCategoryOverrides';
 import { fetchAllMonthDetails } from './api/ynab';
 import { transformYnabData, type Category, type CategoryGroup } from './api/transform';
 
@@ -25,6 +26,7 @@ function App() {
   const { budgetId, setBudgetId, clearBudgetId } = useBudgetId();
   const { loadCached, saveData, clearData } = useCachedBudgetData();
   const { sortOrder, setSortOrder, clearSortOrder } = useGroupSortOrder();
+  const { overrides, setOverride, clearAll: clearOverrides } = useCategoryOverrides();
   const [showSortModal, setShowSortModal] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -79,6 +81,7 @@ function App() {
     clearBudgetId();
     clearData();
     clearSortOrder();
+    clearOverrides();
     setCategories([]);
     setGroups([]);
     setAvailableMonths([]);
@@ -214,6 +217,8 @@ function App() {
             categories={categories}
             groups={groups}
             groupSortOrder={sortOrder}
+            overrides={overrides}
+            onSetOverride={setOverride}
             onSelectCategory={setSelectedCategory}
           />
         )}
