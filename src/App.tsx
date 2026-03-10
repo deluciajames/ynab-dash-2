@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { PiggyBank, X, Loader2, RefreshCw, Clock, ArrowUpDown } from 'lucide-react';
 import { ApiKeyDialog } from './components/ApiKeyDialog';
 import { BudgetSelector } from './components/BudgetSelector';
@@ -11,6 +11,7 @@ import { useGroupSortOrder } from './hooks/useGroupSortOrder';
 import { useCategoryOverrides } from './hooks/useCategoryOverrides';
 import { fetchAllMonthDetails } from './api/ynab';
 import { transformYnabData, type Category, type CategoryGroup } from './api/transform';
+import { analyzeCategory } from './api/percentiles';
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -95,6 +96,11 @@ function App() {
       amount: Math.abs(selectedCategory.monthlyData[m] || 0),
     }));
   }, [selectedCategory, availableMonths]);
+
+  const selectedCategoryAnalysis = useMemo(() => {
+    if (!selectedCategory) return null;
+    return analyzeCategory(selectedCategory);
+  }, [selectedCategory]);
 
   const hasData = categories.length > 0;
   const isConnected = !!apiKey;
@@ -267,6 +273,13 @@ function App() {
                     <YAxis tick={{ fontSize: 12 }} stroke="#94a3b8" />
                     <Tooltip formatter={(value: number) => [formatCurrency(value), 'Amount']} />
                     <Bar dataKey="amount" fill={selectedCategory.type === 'Income' ? '#10b981' : '#3b82f6'} radius={[4, 4, 0, 0]} />
+                    {selectedCategoryAnalysis && (
+                      <>
+                        <ReferenceLine y={selectedCategoryAnalysis.p50} stroke="#22c55e" strokeDasharray="6 3" strokeWidth={1.5} label={{ value: 'P50', position: 'right', fill: '#22c55e', fontSize: 11, fontWeight: 600 }} />
+                        <ReferenceLine y={selectedCategoryAnalysis.p75} stroke="#f59e0b" strokeDasharray="6 3" strokeWidth={1.5} label={{ value: 'P75', position: 'right', fill: '#f59e0b', fontSize: 11, fontWeight: 600 }} />
+                        <ReferenceLine y={selectedCategoryAnalysis.p90} stroke="#ef4444" strokeDasharray="6 3" strokeWidth={1.5} label={{ value: 'P90', position: 'right', fill: '#ef4444', fontSize: 11, fontWeight: 600 }} />
+                      </>
+                    )}
                   </BarChart>
                 </ResponsiveContainer>
               </div>
