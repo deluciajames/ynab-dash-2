@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ChevronDown, ChevronRight, AlertTriangle, Shield, Clock, TrendingUp, Lock } from 'lucide-react';
+import { ChevronDown, ChevronRight, AlertTriangle, Shield, Clock, TrendingUp, Lock, Unlock } from 'lucide-react';
 import type { Category, CategoryGroup } from '../api/transform';
 import { analyzeBudget, type CategoryAnalysis } from '../api/percentiles';
 import { applySortOrder } from '../hooks/useGroupSortOrder';
@@ -25,24 +25,16 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
-function EditableCell({
+function ValueCell({
   value,
-  isLocked,
   onSave,
-  onToggleLock,
   colorClass,
   bgClass,
-  analysis,
-  showPercentileButtons,
 }: {
   value: number;
-  isLocked: boolean;
   onSave: (val: number) => void;
-  onToggleLock: () => void;
   colorClass: string;
   bgClass: string;
-  analysis?: CategoryAnalysis;
-  showPercentileButtons?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -93,54 +85,81 @@ function EditableCell({
     );
   }
 
-  const getPercentileValue = (p: 50 | 75 | 90): number => {
-    if (!analysis) return 0;
-    return p === 50 ? analysis.p50 : p === 75 ? analysis.p75 : analysis.p90;
-  };
-
-  const activePercentile = analysis && !analysis.isIrregular
-    ? ([50, 75, 90] as const).find(p => Math.round(value) === Math.round(getPercentileValue(p))) ?? null
-    : null;
-
   return (
     <td className={`py-2 px-2 ${bgClass}`} onClick={e => e.stopPropagation()}>
-      <div className="flex items-center gap-1.5 justify-end">
-        {isLocked && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onToggleLock(); }}
-            className="p-0.5 text-amber-500 hover:text-amber-600 transition-colors"
-            title="Unlock (will follow confidence toggle)"
-          >
-            <Lock className="w-3 h-3" />
-          </button>
-        )}
+      <div className="flex items-center justify-end">
         <span
           className={`font-medium cursor-pointer hover:underline ${colorClass}`}
           onClick={handleStartEdit}
         >
           {formatCurrency(value)}
         </span>
-        {showPercentileButtons && analysis && !analysis.isIrregular && (
-          <div className="flex bg-slate-100 rounded p-0.5 ml-0.5">
-            {([50, 75, 90] as const).map(p => (
-              <button
-                key={p}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSave(getPercentileValue(p));
-                }}
-                className={`px-1.5 py-0.5 text-[10px] font-semibold rounded transition-all ${
-                  activePercentile === p
-                    ? 'bg-white text-blue-700 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-600'
-                }`}
-                title={`Set to P${p}`}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-        )}
+      </div>
+    </td>
+  );
+}
+
+function TargetControls({
+  analysis,
+  effectiveTarget,
+  isLocked,
+  onSave,
+  onToggleLock,
+  selectedPercentile,
+}: {
+  analysis: CategoryAnalysis;
+  effectiveTarget: number;
+  isLocked: boolean;
+  onSave: (val: number, percentile?: 50 | 75 | 90) => void;
+  onToggleLock: () => void;
+  selectedPercentile: ConfidenceLevel | null;
+}) {
+  const getPercentileValue = (p: 50 | 75 | 90): number => {
+    if (analysis.isIrregular) return analysis.sinkingFundMonthly;
+    return p === 50 ? analysis.p50 : p === 75 ? analysis.p75 : analysis.p90;
+  };
+
+  const activePercentile = selectedPercentile ?? (
+    !analysis.isIrregular
+      ? ([50, 75, 90] as const).find(
+          p => Math.round(effectiveTarget) === Math.round(getPercentileValue(p))
+        ) ?? null
+      : null
+  );
+
+  return (
+    <td className="py-2 px-1" onClick={e => e.stopPropagation()}>
+      <div className="flex items-center gap-1.5 justify-start">
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleLock(); }}
+          className={`p-0.5 transition-colors ${
+            isLocked
+              ? 'text-amber-500 hover:text-amber-600'
+              : 'text-slate-300 hover:text-slate-400'
+          }`}
+          title={isLocked ? 'Unlock (will follow confidence toggle)' : 'Value follows confidence toggle'}
+        >
+          {isLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+        </button>
+        <div className="flex bg-slate-100 rounded p-0.5">
+          {([50, 75, 90] as const).map(p => (
+            <button
+              key={p}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSave(getPercentileValue(p), p);
+              }}
+              className={`px-1.5 py-0.5 text-[10px] font-semibold rounded transition-all ${
+                activePercentile === p
+                  ? 'bg-white text-blue-700 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-600'
+              }`}
+              title={`Set to P${p}`}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
       </div>
     </td>
   );
@@ -199,7 +218,7 @@ export function TargetCalculator({
 
   const getEffectiveBuffer = (a: CategoryAnalysis): number => {
     const ov = overrides[a.categoryId];
-    if (ov?.lockedBuffer && ov.buffer !== undefined) return ov.buffer;
+    if (ov?.buffer !== undefined) return ov.buffer;
     return getBaseBuffer(a);
   };
 
@@ -245,27 +264,23 @@ export function TargetCalculator({
     setTakeHome(isNaN(num) || num <= 0 ? null : num);
   };
 
-  const handleTargetSave = (categoryId: string, val: number) => {
-    onSetOverride(categoryId, { target: val, lockedTarget: true });
+  const handleTargetSave = (categoryId: string, val: number, percentile?: 50 | 75 | 90) => {
+    onSetOverride(categoryId, { target: val, lockedTarget: true, targetPercentile: percentile });
   };
 
   const handleBufferSave = (categoryId: string, val: number) => {
-    onSetOverride(categoryId, { buffer: val, lockedBuffer: true });
+    onSetOverride(categoryId, { buffer: val, lockedBuffer: false });
   };
 
-  const handleToggleTargetLock = (categoryId: string) => {
+  const handleToggleTargetLock = (categoryId: string, currentValue: number) => {
     const ov = overrides[categoryId];
     if (ov?.lockedTarget) {
-      onSetOverride(categoryId, { lockedTarget: false, target: undefined });
+      onSetOverride(categoryId, { lockedTarget: false, target: undefined, targetPercentile: undefined });
+    } else {
+      onSetOverride(categoryId, { lockedTarget: true, target: currentValue });
     }
   };
 
-  const handleToggleBufferLock = (categoryId: string) => {
-    const ov = overrides[categoryId];
-    if (ov?.lockedBuffer) {
-      onSetOverride(categoryId, { lockedBuffer: false, buffer: undefined });
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -375,8 +390,9 @@ export function TargetCalculator({
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className="text-left py-3 px-4 font-semibold text-slate-700 sticky left-0 bg-slate-50 min-w-[250px]">Category</th>
-                <th className="text-right py-3 px-2 font-semibold text-emerald-700 bg-emerald-50 min-w-[140px]">Target</th>
-                <th className="text-right py-3 px-2 font-semibold text-purple-700 bg-purple-50 min-w-[140px]">Buffer</th>
+                <th className="text-right py-3 px-2 font-semibold text-emerald-700 bg-emerald-50 min-w-[80px]">Target</th>
+                <th className="py-3 px-1 bg-emerald-50 w-[90px]"></th>
+                <th className="text-right py-3 px-2 font-semibold text-purple-700 bg-purple-50 min-w-[80px]">Buffer</th>
                 <th className="text-center py-3 px-3 font-semibold text-slate-700 min-w-[80px]">Type</th>
                 <th className={`text-right py-3 px-3 font-semibold min-w-[90px] ${confidence === 50 ? 'text-blue-700 bg-blue-50' : 'text-slate-500'}`}>P50</th>
                 <th className={`text-right py-3 px-3 font-semibold min-w-[90px] ${confidence === 75 ? 'text-blue-700 bg-blue-50' : 'text-slate-500'}`}>P75</th>
@@ -406,6 +422,7 @@ export function TargetCalculator({
                       <td className="py-2.5 px-2 text-right font-semibold text-emerald-700 bg-emerald-50/50">
                         {formatCurrency(gt?.target || 0)}
                       </td>
+                      <td className="py-2.5 px-1 bg-emerald-50/50"></td>
                       <td className="py-2.5 px-2 text-right font-semibold text-purple-700 bg-purple-50/50">
                         {formatCurrency(gt?.buffer || 0)}
                       </td>
@@ -427,7 +444,7 @@ export function TargetCalculator({
                       const effectiveBuffer = getEffectiveBuffer(a);
                       const ov = overrides[a.categoryId];
                       const isTargetLocked = !!(ov?.lockedTarget);
-                      const isBufferLocked = !!(ov?.lockedBuffer);
+
 
                       return (
                         <tr
@@ -440,21 +457,23 @@ export function TargetCalculator({
                               <span>{a.categoryName}</span>
                             </div>
                           </td>
-                          <EditableCell
+                          <ValueCell
                             value={effectiveTarget}
-                            isLocked={isTargetLocked}
-                            onSave={(val) => handleTargetSave(a.categoryId, val)}
-                            onToggleLock={() => handleToggleTargetLock(a.categoryId)}
+                            onSave={(val) => handleTargetSave(a.categoryId, val, undefined)}
                             colorClass="text-emerald-700"
                             bgClass="bg-emerald-50/30"
-                            analysis={a}
-                            showPercentileButtons={true}
                           />
-                          <EditableCell
+                          <TargetControls
+                            analysis={a}
+                            effectiveTarget={effectiveTarget}
+                            isLocked={isTargetLocked}
+                            onSave={(val, p) => handleTargetSave(a.categoryId, val, p)}
+                            onToggleLock={() => handleToggleTargetLock(a.categoryId, effectiveTarget)}
+                            selectedPercentile={ov?.targetPercentile ?? null}
+                          />
+                          <ValueCell
                             value={effectiveBuffer}
-                            isLocked={isBufferLocked}
                             onSave={(val) => handleBufferSave(a.categoryId, val)}
-                            onToggleLock={() => handleToggleBufferLock(a.categoryId)}
                             colorClass="text-purple-700"
                             bgClass="bg-purple-50/30"
                           />
@@ -491,6 +510,7 @@ export function TargetCalculator({
                 <td className="py-3 px-2 text-right text-emerald-300">
                   {formatCurrency(totalTarget)}
                 </td>
+                <td className="py-3 px-1"></td>
                 <td className="py-3 px-2 text-right text-purple-300">
                   {formatCurrency(totalBuffer)}
                 </td>
@@ -516,7 +536,7 @@ export function TargetCalculator({
           The 50th percentile (median) is your lean budget. The 75th is a balanced target that covers most months.
           The 90th is your ceiling. Categories with 4+ zero-spending months are flagged as sinking funds and use
           an annual accrual approach instead. Click any Target or Buffer value to edit it — edited values show a
-          lock icon and won't change when you switch confidence levels. Click the lock to unlock and follow the
+          locked icon and won't change when you switch confidence levels. Click the lock to unlock and follow the
           master toggle again. Use the small 50/75/90 buttons to quickly set a specific percentile for individual categories.
         </p>
       </div>

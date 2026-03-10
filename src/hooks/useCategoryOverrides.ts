@@ -7,6 +7,7 @@ export interface CategoryOverride {
   buffer?: number;
   lockedTarget?: boolean;
   lockedBuffer?: boolean;
+  targetPercentile?: 50 | 75 | 90;
 }
 
 export type OverridesMap = Record<string, CategoryOverride>;
