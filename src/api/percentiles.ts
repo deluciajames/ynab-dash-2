@@ -41,14 +41,19 @@ const IRREGULAR_ZERO_THRESHOLD = 4;
 
 export function analyzeCategory(
   category: Category,
+  excludedMonths?: string[],
 ): CategoryAnalysis {
-  const values = Object.values(category.monthlyData);
-  const absValues = values.map(v => Math.abs(v));
-  const totalMonths = absValues.length;
-  const zeroMonths = absValues.filter(v => v === 0).length;
-  const isIrregular = zeroMonths >= IRREGULAR_ZERO_THRESHOLD;
+  const allValues = Object.values(category.monthlyData);
+  const allAbsValues = allValues.map(v => Math.abs(v));
+  const allTotalMonths = allAbsValues.length;
+  const allZeroMonths = allAbsValues.filter(v => v === 0).length;
+  const isIrregular = allZeroMonths >= IRREGULAR_ZERO_THRESHOLD;
 
-  const allValuesSorted = [...absValues].sort((a, b) => a - b);
+  const excluded = new Set(excludedMonths || []);
+  const filteredAbsValues = Object.entries(category.monthlyData)
+    .filter(([month]) => !excluded.has(month))
+    .map(([, v]) => Math.abs(v));
+  const percentileSorted = [...filteredAbsValues].sort((a, b) => a - b);
 
   let p50 = 0;
   let p75 = 0;
@@ -58,17 +63,17 @@ export function analyzeCategory(
   let recommendedTarget = 0;
 
   if (isIrregular) {
-    const totalSpend = absValues.reduce((sum, v) => sum + v, 0);
-    const annualized = totalMonths >= 12 ? totalSpend : (totalSpend / (totalMonths || 1)) * 12;
+    const totalSpend = allAbsValues.reduce((sum, v) => sum + v, 0);
+    const annualized = allTotalMonths >= 12 ? totalSpend : (totalSpend / (allTotalMonths || 1)) * 12;
     sinkingFundMonthly = Math.round(annualized / 12);
-    p50 = calculatePercentile(allValuesSorted, 50);
-    p75 = calculatePercentile(allValuesSorted, 75);
-    p90 = calculatePercentile(allValuesSorted, 90);
+    p50 = calculatePercentile(percentileSorted, 50);
+    p75 = calculatePercentile(percentileSorted, 75);
+    p90 = calculatePercentile(percentileSorted, 90);
     recommendedTarget = sinkingFundMonthly;
   } else {
-    p50 = calculatePercentile(allValuesSorted, 50);
-    p75 = calculatePercentile(allValuesSorted, 75);
-    p90 = calculatePercentile(allValuesSorted, 90);
+    p50 = calculatePercentile(percentileSorted, 50);
+    p75 = calculatePercentile(percentileSorted, 75);
+    p90 = calculatePercentile(percentileSorted, 90);
     bufferAmount = Math.max(0, p90 - p75);
     recommendedTarget = p75;
   }
@@ -78,8 +83,8 @@ export function analyzeCategory(
     categoryName: category.name,
     groupId: category.groupId,
     isIrregular,
-    zeroMonths,
-    totalMonths,
+    zeroMonths: allZeroMonths,
+    totalMonths: allTotalMonths,
     p50,
     p75,
     p90,
@@ -92,10 +97,13 @@ export function analyzeCategory(
 export function analyzeBudget(
   categories: Category[],
   _groups: CategoryGroup[],
+  exclusionsMap?: Record<string, string[]>,
 ): BudgetAnalysis {
   const expenseCategories = categories.filter(c => c.type !== 'Income');
 
-  const analyses = expenseCategories.map(cat => analyzeCategory(cat));
+  const analyses = expenseCategories.map(cat =>
+    analyzeCategory(cat, exclusionsMap?.[cat.id])
+  );
 
   const regular = analyses.filter(a => !a.isIrregular);
   const irregular = analyses.filter(a => a.isIrregular);

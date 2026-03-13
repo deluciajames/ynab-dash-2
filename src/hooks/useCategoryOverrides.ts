@@ -8,6 +8,7 @@ export interface CategoryOverride {
   lockedTarget?: boolean;
   lockedBuffer?: boolean;
   targetPercentile?: 50 | 75 | 90;
+  excludedMonths?: string[];
 }
 
 export type OverridesMap = Record<string, CategoryOverride>;
@@ -57,5 +58,17 @@ export function useCategoryOverrides() {
     }
   }, []);
 
-  return { overrides, setOverride, clearOverride, clearAll };
+  const toggleExcludedMonth = useCallback((categoryId: string, month: string) => {
+    setOverridesState(prev => {
+      const current = prev[categoryId]?.excludedMonths || [];
+      const excluded = current.includes(month)
+        ? current.filter(m => m !== month)
+        : [...current, month];
+      const next = { ...prev, [categoryId]: { ...prev[categoryId], excludedMonths: excluded } };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
+  return { overrides, setOverride, clearOverride, clearAll, toggleExcludedMonth };
 }

@@ -188,9 +188,19 @@ export function TargetCalculator({
   const [takeHomeInput, setTakeHomeInput] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
+  const exclusionsMap = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const [catId, ov] of Object.entries(overrides)) {
+      if (ov.excludedMonths && ov.excludedMonths.length > 0) {
+        map[catId] = ov.excludedMonths;
+      }
+    }
+    return map;
+  }, [overrides]);
+
   const analysis = useMemo(
-    () => analyzeBudget(categories, groups),
-    [categories, groups]
+    () => analyzeBudget(categories, groups, exclusionsMap),
+    [categories, groups, exclusionsMap]
   );
 
   const expenseGroups = useMemo(

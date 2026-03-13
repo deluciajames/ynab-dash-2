@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts';
 import { PiggyBank, X, Loader2, RefreshCw, Clock, ArrowUpDown } from 'lucide-react';
 import { ApiKeyDialog } from './components/ApiKeyDialog';
 import { BudgetSelector } from './components/BudgetSelector';
@@ -27,7 +27,7 @@ function App() {
   const { budgetId, setBudgetId, clearBudgetId } = useBudgetId();
   const { loadCached, saveData, clearData } = useCachedBudgetData();
   const { sortOrder, setSortOrder, clearSortOrder } = useGroupSortOrder();
-  const { overrides, setOverride, clearAll: clearOverrides } = useCategoryOverrides();
+  const { overrides, setOverride, clearAll: clearOverrides, toggleExcludedMonth } = useCategoryOverrides();
   const [showSortModal, setShowSortModal] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -89,18 +89,28 @@ function App() {
     setLastUpdated(null);
   };
 
+  const selectedExcludedMonths = useMemo(() => {
+    if (!selectedCategory) return [];
+    return overrides[selectedCategory.id]?.excludedMonths || [];
+  }, [selectedCategory, overrides]);
+
   const chartData = useMemo(() => {
     if (!selectedCategory) return [];
     return availableMonths.map(m => ({
       month: m.split(' ')[0],
+      fullMonth: m,
       amount: Math.abs(selectedCategory.monthlyData[m] || 0),
+      excluded: selectedExcludedMonths.includes(m),
+      fill: selectedExcludedMonths.includes(m)
+        ? '#cbd5e1'
+        : (selectedCategory.type === 'Income' ? '#10b981' : '#3b82f6'),
     }));
-  }, [selectedCategory, availableMonths]);
+  }, [selectedCategory, availableMonths, selectedExcludedMonths]);
 
   const selectedCategoryAnalysis = useMemo(() => {
     if (!selectedCategory) return null;
-    return analyzeCategory(selectedCategory);
-  }, [selectedCategory]);
+    return analyzeCategory(selectedCategory, selectedExcludedMonths);
+  }, [selectedCategory, selectedExcludedMonths]);
 
   const hasData = categories.length > 0;
   const isConnected = !!apiKey;
@@ -265,14 +275,36 @@ function App() {
               </div>
 
               <div className="h-64 mb-6">
-                <p className="text-sm font-medium text-slate-700 mb-3">Monthly Spending</p>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-medium text-slate-700">Monthly Spending</p>
+                  {selectedExcludedMonths.length > 0 && (
+                    <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium">
+                      {selectedExcludedMonths.length} month{selectedExcludedMonths.length !== 1 ? 's' : ''} excluded
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 mb-2">Click a bar to toggle month exclusion</p>
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData}>
+                  <BarChart data={chartData} onClick={(state) => {
+                    if (state && state.activePayload && state.activePayload[0]) {
+                      const payload = state.activePayload[0].payload;
+                      if (payload.fullMonth && selectedCategory) {
+                        toggleExcludedMonth(selectedCategory.id, payload.fullMonth);
+                      }
+                    }
+                  }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                     <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#94a3b8" />
                     <YAxis tick={{ fontSize: 12 }} stroke="#94a3b8" />
-                    <Tooltip formatter={(value: number) => [formatCurrency(value), 'Amount']} />
-                    <Bar dataKey="amount" fill={selectedCategory.type === 'Income' ? '#10b981' : '#3b82f6'} radius={[4, 4, 0, 0]} />
+                    <Tooltip formatter={(value: number, _name: string, props: { payload?: { excluded?: boolean } }) => [
+                      formatCurrency(value),
+                      props.payload?.excluded ? 'Amount (excluded)' : 'Amount'
+                    ]} />
+                    <Bar dataKey="amount" radius={[4, 4, 0, 0]} cursor="pointer">
+                      {chartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} fillOpacity={entry.excluded ? 0.4 : 1} />
+                      ))}
+                    </Bar>
                     {selectedCategoryAnalysis && (
                       <>
                         <ReferenceLine y={selectedCategoryAnalysis.p50} stroke="#22c55e" strokeDasharray="6 3" strokeWidth={1.5} label={{ value: 'P50', position: 'right', fill: '#22c55e', fontSize: 11, fontWeight: 600 }} />
@@ -289,10 +321,20 @@ function App() {
                 <div className="space-y-1">
                   {availableMonths.map(m => {
                     const val = Math.abs(selectedCategory.monthlyData[m] || 0);
+                    const isExcluded = selectedExcludedMonths.includes(m);
                     return (
-                      <div key={m} className="flex justify-between text-sm py-1 border-b border-slate-100">
-                        <span className="text-slate-600">{m}</span>
-                        <span className="font-medium text-slate-900">{formatCurrency(val)}</span>
+                      <div
+                        key={m}
+                        className={`flex items-center justify-between text-sm py-1 border-b border-slate-100 cursor-pointer hover:bg-slate-50 rounded px-1 ${isExcluded ? 'opacity-50' : ''}`}
+                        onClick={() => toggleExcludedMonth(selectedCategory.id, m)}
+                      >
+                        <span className={isExcluded ? 'text-slate-400 line-through' : 'text-slate-600'}>{m}</span>
+                        <div className="flex items-center gap-2">
+                          {isExcluded && (
+                            <span className="text-xs text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded font-medium">excluded</span>
+                          )}
+                          <span className={isExcluded ? 'font-medium text-slate-400 line-through' : 'font-medium text-slate-900'}>{formatCurrency(val)}</span>
+                        </div>
                       </div>
                     );
                   })}
