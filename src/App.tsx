@@ -112,6 +112,15 @@ function App() {
     return analyzeCategory(selectedCategory, selectedExcludedMonths);
   }, [selectedCategory, selectedExcludedMonths]);
 
+  const includedStats = useMemo(() => {
+    if (!selectedCategory) return { total: 0, average: 0, count: 0 };
+    const entries = Object.entries(selectedCategory.monthlyData)
+      .filter(([month]) => !selectedExcludedMonths.includes(month));
+    const total = entries.reduce((sum, [, val]) => sum + Math.abs(val), 0);
+    const count = entries.length;
+    return { total, average: count > 0 ? total / count : 0, count };
+  }, [selectedCategory, selectedExcludedMonths]);
+
   const hasData = categories.length > 0;
   const isConnected = !!apiKey;
 
@@ -263,16 +272,32 @@ function App() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="grid grid-cols-2 gap-4 mb-3">
                 <div className="p-4 bg-slate-50 rounded-lg">
-                  <p className="text-xs text-slate-500 mb-1">Average</p>
-                  <p className="text-xl font-bold text-slate-900">{formatCurrency(selectedCategory.average)}</p>
+                  <p className="text-xs text-slate-500 mb-1">Average ({includedStats.count} mo)</p>
+                  <p className="text-xl font-bold text-slate-900">{formatCurrency(includedStats.average)}</p>
                 </div>
                 <div className="p-4 bg-blue-50 rounded-lg">
                   <p className="text-xs text-blue-600 mb-1">Total</p>
-                  <p className="text-xl font-bold text-blue-700">{formatCurrency(selectedCategory.total)}</p>
+                  <p className="text-xl font-bold text-blue-700">{formatCurrency(includedStats.total)}</p>
                 </div>
               </div>
+              {selectedCategoryAnalysis && (
+                <div className="grid grid-cols-3 gap-2 mb-6">
+                  <div className="p-2 bg-emerald-50 rounded-lg text-center">
+                    <p className="text-[10px] text-emerald-600 mb-0.5">P50</p>
+                    <p className="text-sm font-bold text-emerald-700">{formatCurrency(selectedCategoryAnalysis.p50)}</p>
+                  </div>
+                  <div className="p-2 bg-amber-50 rounded-lg text-center">
+                    <p className="text-[10px] text-amber-600 mb-0.5">P75</p>
+                    <p className="text-sm font-bold text-amber-700">{formatCurrency(selectedCategoryAnalysis.p75)}</p>
+                  </div>
+                  <div className="p-2 bg-red-50 rounded-lg text-center">
+                    <p className="text-[10px] text-red-600 mb-0.5">P90</p>
+                    <p className="text-sm font-bold text-red-700">{formatCurrency(selectedCategoryAnalysis.p90)}</p>
+                  </div>
+                </div>
+              )}
 
               <div className="h-64 mb-6">
                 <div className="flex items-center justify-between mb-3">
