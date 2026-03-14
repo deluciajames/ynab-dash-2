@@ -15,7 +15,7 @@ A React-based budget calculator that connects to the YNAB API and uses percentil
 - **Framework**: React 18 with TypeScript
 - **Build Tool**: Vite
 - **Styling**: Tailwind CSS
-- **Charts**: Recharts
+- **Charts**: Recharts, @nivo/sankey (Sankey flow diagrams)
 - **Icons**: Lucide React
 - **Utilities**: clsx, tailwind-merge, class-variance-authority
 
@@ -32,7 +32,7 @@ A React-based budget calculator that connects to the YNAB API and uses percentil
 
 ## Project Structure
 - `src/main.tsx` - Application entry point
-- `src/App.tsx` - Main shell: YNAB connection, data loading, category detail sidebar
+- `src/App.tsx` - Main shell: YNAB connection, data loading, tab navigation (Budget/Reports), category detail sidebar
 - `src/api/ynab.ts` - YNAB REST API client
 - `src/api/transform.ts` - Transforms YNAB API responses into Category/CategoryGroup types
 - `src/api/percentiles.ts` - Percentile calculation engine (P50/P75/P90, sinking fund detection, buffer math)
@@ -42,6 +42,7 @@ A React-based budget calculator that connects to the YNAB API and uses percentil
 - `src/hooks/useCategoryOverrides.ts` - Per-category target/buffer overrides with lock state, persisted in localStorage
 - `src/components/SortGroupsModal.tsx` - Drag-and-drop modal for reordering category groups
 - `src/components/TargetCalculator.tsx` - Main report UI with confidence toggle, summary cards, category table
+- `src/components/SankeyReport.tsx` - Sankey flow chart showing income → expense groups → categories + remaining
 - `src/components/ApiKeyDialog.tsx` - Token input/connection management dialog
 - `src/components/BudgetSelector.tsx` - Budget picker dropdown
 - `vite.config.ts` - Vite config (bound to 0.0.0.0:5000 for Replit)

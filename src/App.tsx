@@ -4,6 +4,7 @@ import { PiggyBank, X, Loader2, RefreshCw, Clock, ArrowUpDown } from 'lucide-rea
 import { ApiKeyDialog } from './components/ApiKeyDialog';
 import { BudgetSelector } from './components/BudgetSelector';
 import { TargetCalculator } from './components/TargetCalculator';
+import { SankeyReport } from './components/SankeyReport';
 import { SortGroupsModal } from './components/SortGroupsModal';
 import { useApiKey, useBudgetId } from './hooks/useApiKey';
 import { useCachedBudgetData, formatLastUpdated } from './hooks/useCachedBudgetData';
@@ -29,6 +30,7 @@ function App() {
   const { sortOrder, setSortOrder, clearSortOrder } = useGroupSortOrder();
   const { overrides, setOverride, clearAll: clearOverrides, toggleExcludedMonth } = useCategoryOverrides();
   const [showSortModal, setShowSortModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'budget' | 'reports'>('budget');
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [groups, setGroups] = useState<CategoryGroup[]>([]);
@@ -238,14 +240,45 @@ function App() {
         )}
 
         {hasData && !loadError && (
-          <TargetCalculator
-            categories={categories}
-            groups={groups}
-            groupSortOrder={sortOrder}
-            overrides={overrides}
-            onSetOverride={setOverride}
-            onSelectCategory={setSelectedCategory}
-          />
+          <>
+            <div className="flex gap-1 mb-6 bg-slate-100 rounded-lg p-1 w-fit">
+              <button
+                onClick={() => setActiveTab('budget')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                  activeTab === 'budget'
+                    ? 'bg-white text-blue-700 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Budget
+              </button>
+              <button
+                onClick={() => setActiveTab('reports')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                  activeTab === 'reports'
+                    ? 'bg-white text-blue-700 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Reports
+              </button>
+            </div>
+
+            {activeTab === 'budget' && (
+              <TargetCalculator
+                categories={categories}
+                groups={groups}
+                groupSortOrder={sortOrder}
+                overrides={overrides}
+                onSetOverride={setOverride}
+                onSelectCategory={setSelectedCategory}
+              />
+            )}
+
+            {activeTab === 'reports' && (
+              <SankeyReport categories={categories} groups={groups} />
+            )}
+          </>
         )}
       </main>
 
