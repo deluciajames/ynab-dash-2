@@ -131,19 +131,25 @@ export function SankeyReport({ categories, groups, takeHome }: SankeyReportProps
           labelOrientation="horizontal"
           labelPadding={12}
           labelTextColor={{ from: 'color', modifiers: [['darker', 1.2]] }}
-          label={(node) => `${node.nodeLabel}  ${formatCurrency(node.value || 0)}`}
-          nodeTooltip={({ node }: { node: NodeDatum }) => (
-            <div className="bg-white shadow-lg rounded-lg px-3 py-2 border border-slate-200">
-              <div className="flex items-center gap-2">
-                <div
-                  className="w-3 h-3 rounded-full"
-                  style={{ backgroundColor: node.color }}
-                />
-                <span className="text-sm font-medium text-slate-700">{node.nodeLabel}</span>
+          label={(node) => {
+            const displayValue = node.id === 'TakeHome' ? takeHome! : (node.value || 0);
+            return `${node.nodeLabel}  ${formatCurrency(displayValue)}`;
+          }}
+          nodeTooltip={({ node }: { node: NodeDatum }) => {
+            const displayValue = node.id === 'TakeHome' ? takeHome! : (node.value || 0);
+            return (
+              <div className="bg-white shadow-lg rounded-lg px-3 py-2 border border-slate-200">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: node.color }}
+                  />
+                  <span className="text-sm font-medium text-slate-700">{node.nodeLabel}</span>
+                </div>
+                <span className="text-sm font-bold text-slate-900">{formatCurrency(displayValue)}</span>
               </div>
-              <span className="text-sm font-bold text-slate-900">{formatCurrency(node.value || 0)}</span>
-            </div>
-          )}
+            );
+          }}
           linkTooltip={({ link }: { link: LinkDatum }) => (
             <div className="bg-white shadow-lg rounded-lg px-3 py-2 border border-slate-200">
               <div className="text-xs text-slate-500 mb-1">
