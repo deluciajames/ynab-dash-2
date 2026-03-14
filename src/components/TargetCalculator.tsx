@@ -14,6 +14,9 @@ interface TargetCalculatorProps {
   overrides: OverridesMap;
   onSetOverride: (categoryId: string, override: Partial<CategoryOverride>) => void;
   onSelectCategory: (category: Category) => void;
+  takeHome: number | null;
+  takeHomeInput: string;
+  onTakeHomeChange: (value: string) => void;
 }
 
 function formatCurrency(value: number): string {
@@ -172,6 +175,9 @@ export function TargetCalculator({
   overrides,
   onSetOverride,
   onSelectCategory,
+  takeHome,
+  takeHomeInput,
+  onTakeHomeChange,
 }: TargetCalculatorProps) {
   const [confidence, setConfidenceState] = useState<ConfidenceLevel>(75);
 
@@ -184,8 +190,6 @@ export function TargetCalculator({
       }
     }
   };
-  const [takeHome, setTakeHome] = useState<number | null>(null);
-  const [takeHomeInput, setTakeHomeInput] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const exclusionsMap = useMemo(() => {
@@ -278,11 +282,6 @@ export function TargetCalculator({
     });
   };
 
-  const handleTakeHomeChange = (value: string) => {
-    setTakeHomeInput(value);
-    const num = parseFloat(value);
-    setTakeHome(isNaN(num) || num <= 0 ? null : num);
-  };
 
   const handleTargetSave = (categoryId: string, val: number, percentile?: 50 | 75 | 90) => {
     onSetOverride(categoryId, { target: val, lockedTarget: true, targetPercentile: percentile });
@@ -330,7 +329,7 @@ export function TargetCalculator({
             <input
               type="number"
               value={takeHomeInput}
-              onChange={(e) => handleTakeHomeChange(e.target.value)}
+              onChange={(e) => onTakeHomeChange(e.target.value)}
               placeholder="5,000"
               className="w-32 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />

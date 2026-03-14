@@ -63,3 +63,52 @@ export function useBudgetId() {
 
   return { budgetId, setBudgetId, clearBudgetId };
 }
+
+const TAKE_HOME_KEY = 'ynab_take_home';
+
+export function useTakeHome() {
+  const [takeHome, setTakeHomeState] = useState<number | null>(() => {
+    try {
+      const raw = localStorage.getItem(TAKE_HOME_KEY);
+      if (!raw) return null;
+      const num = parseFloat(raw);
+      return isNaN(num) || num <= 0 ? null : num;
+    } catch {
+      return null;
+    }
+  });
+
+  const [takeHomeInput, setTakeHomeInputState] = useState<string>(() => {
+    try {
+      return localStorage.getItem(TAKE_HOME_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const setTakeHomeInput = useCallback((value: string) => {
+    setTakeHomeInputState(value);
+    const num = parseFloat(value);
+    const parsed = isNaN(num) || num <= 0 ? null : num;
+    setTakeHomeState(parsed);
+    try {
+      if (parsed !== null) {
+        localStorage.setItem(TAKE_HOME_KEY, value);
+      } else {
+        localStorage.removeItem(TAKE_HOME_KEY);
+      }
+    } catch {
+    }
+  }, []);
+
+  const clearTakeHome = useCallback(() => {
+    setTakeHomeState(null);
+    setTakeHomeInputState('');
+    try {
+      localStorage.removeItem(TAKE_HOME_KEY);
+    } catch {
+    }
+  }, []);
+
+  return { takeHome, takeHomeInput, setTakeHomeInput, clearTakeHome };
+}

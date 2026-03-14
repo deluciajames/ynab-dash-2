@@ -6,6 +6,7 @@ import type { Category, CategoryGroup } from '../api/transform';
 interface SankeyReportProps {
   categories: Category[];
   groups: CategoryGroup[];
+  takeHome: number | null;
 }
 
 interface SankeyNode {
@@ -44,21 +45,16 @@ const GROUP_PALETTE = [
   '#84cc16',
 ];
 
-export function SankeyReport({ categories, groups }: SankeyReportProps) {
+export function SankeyReport({ categories, groups, takeHome }: SankeyReportProps) {
   const sankeyData = useMemo(() => {
-    const incomeGroups = groups.filter(g => g.isIncome);
+    if (!takeHome || takeHome <= 0) return null;
+
     const expenseGroups = groups.filter(g => !g.isIncome);
-
-    const totalIncome = categories
-      .filter(c => incomeGroups.some(g => g.id === c.groupId))
-      .reduce((sum, c) => sum + Math.abs(c.average), 0);
-
-    if (totalIncome === 0) return null;
 
     const nodes: SankeyNode[] = [];
     const links: DefaultLink[] = [];
 
-    nodes.push({ id: 'Income', nodeColor: NODE_COLORS.income, nodeLabel: 'Income' });
+    nodes.push({ id: 'TakeHome', nodeColor: NODE_COLORS.income, nodeLabel: 'Take Home' });
 
     let totalExpenseAvg = 0;
     let colorIdx = 0;
@@ -73,7 +69,7 @@ export function SankeyReport({ categories, groups }: SankeyReportProps) {
 
       const groupNodeId = `group_${group.id}`;
       nodes.push({ id: groupNodeId, nodeColor: groupColor, nodeLabel: group.name });
-      links.push({ source: 'Income', target: groupNodeId, value: groupTotal });
+      links.push({ source: 'TakeHome', target: groupNodeId, value: groupTotal });
       totalExpenseAvg += groupTotal;
 
       for (const cat of groupCats) {
@@ -85,24 +81,24 @@ export function SankeyReport({ categories, groups }: SankeyReportProps) {
       }
     }
 
-    const remaining = Math.max(0, totalIncome - totalExpenseAvg);
+    const remaining = Math.max(0, takeHome - totalExpenseAvg);
     if (remaining > 0) {
       nodes.push({ id: 'Remaining', nodeColor: NODE_COLORS.remaining, nodeLabel: 'Remaining' });
-      links.push({ source: 'Income', target: 'Remaining', value: remaining });
+      links.push({ source: 'TakeHome', target: 'Remaining', value: remaining });
     }
 
     if (links.length === 0) return null;
 
     return { nodes, links };
-  }, [categories, groups]);
+  }, [categories, groups, takeHome]);
 
   if (!sankeyData) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <div className="bg-white border border-slate-200 rounded-lg p-8 max-w-md text-center">
-          <h2 className="text-lg font-semibold text-slate-900 mb-2">No Data Available</h2>
+          <h2 className="text-lg font-semibold text-slate-900 mb-2">Set Your Take Home</h2>
           <p className="text-sm text-slate-500">
-            Load your budget data first to see the Sankey flow chart of your income and expenses.
+            Enter your Monthly Take Home on the Budget tab to see how your income flows into expense categories.
           </p>
         </div>
       </div>

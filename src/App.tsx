@@ -6,7 +6,7 @@ import { BudgetSelector } from './components/BudgetSelector';
 import { TargetCalculator } from './components/TargetCalculator';
 import { SankeyReport } from './components/SankeyReport';
 import { SortGroupsModal } from './components/SortGroupsModal';
-import { useApiKey, useBudgetId } from './hooks/useApiKey';
+import { useApiKey, useBudgetId, useTakeHome } from './hooks/useApiKey';
 import { useCachedBudgetData, formatLastUpdated } from './hooks/useCachedBudgetData';
 import { useGroupSortOrder } from './hooks/useGroupSortOrder';
 import { useCategoryOverrides } from './hooks/useCategoryOverrides';
@@ -29,6 +29,7 @@ function App() {
   const { loadCached, saveData, clearData } = useCachedBudgetData();
   const { sortOrder, setSortOrder, clearSortOrder } = useGroupSortOrder();
   const { overrides, setOverride, clearAll: clearOverrides, toggleExcludedMonth } = useCategoryOverrides();
+  const { takeHome, takeHomeInput, setTakeHomeInput, clearTakeHome } = useTakeHome();
   const [showSortModal, setShowSortModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'budget' | 'reports'>('budget');
 
@@ -85,6 +86,7 @@ function App() {
     clearData();
     clearSortOrder();
     clearOverrides();
+    clearTakeHome();
     setCategories([]);
     setGroups([]);
     setAvailableMonths([]);
@@ -272,11 +274,14 @@ function App() {
                 overrides={overrides}
                 onSetOverride={setOverride}
                 onSelectCategory={setSelectedCategory}
+                takeHome={takeHome}
+                takeHomeInput={takeHomeInput}
+                onTakeHomeChange={setTakeHomeInput}
               />
             )}
 
             {activeTab === 'reports' && (
-              <SankeyReport categories={categories} groups={groups} />
+              <SankeyReport categories={categories} groups={groups} takeHome={takeHome} />
             )}
           </>
         )}
