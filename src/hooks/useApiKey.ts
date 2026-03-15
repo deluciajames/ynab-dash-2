@@ -112,3 +112,29 @@ export function useTakeHome() {
 
   return { takeHome, takeHomeInput, setTakeHomeInput, clearTakeHome };
 }
+
+type ConfidenceLevel = 50 | 75 | 90;
+const CONFIDENCE_KEY = 'ynab_confidence';
+
+export function useConfidence() {
+  const [confidence, setConfidenceState] = useState<ConfidenceLevel>(() => {
+    try {
+      const raw = localStorage.getItem(CONFIDENCE_KEY);
+      if (raw === '50') return 50;
+      if (raw === '90') return 90;
+      return 75;
+    } catch {
+      return 75;
+    }
+  });
+
+  const setConfidence = useCallback((level: ConfidenceLevel) => {
+    setConfidenceState(level);
+    try {
+      localStorage.setItem(CONFIDENCE_KEY, String(level));
+    } catch {
+    }
+  }, []);
+
+  return { confidence, setConfidence };
+}

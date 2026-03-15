@@ -17,6 +17,8 @@ interface TargetCalculatorProps {
   takeHome: number | null;
   takeHomeInput: string;
   onTakeHomeChange: (value: string) => void;
+  confidence: ConfidenceLevel;
+  onConfidenceChange: (level: ConfidenceLevel) => void;
 }
 
 function formatCurrency(value: number): string {
@@ -178,11 +180,11 @@ export function TargetCalculator({
   takeHome,
   takeHomeInput,
   onTakeHomeChange,
+  confidence,
+  onConfidenceChange,
 }: TargetCalculatorProps) {
-  const [confidence, setConfidenceState] = useState<ConfidenceLevel>(75);
-
   const setConfidence = (level: ConfidenceLevel) => {
-    setConfidenceState(level);
+    onConfidenceChange(level);
     for (const a of analysis.categories) {
       const ov = overrides[a.categoryId];
       if (ov && !ov.lockedTarget && ov.target !== undefined) {

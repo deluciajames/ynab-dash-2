@@ -6,13 +6,13 @@ import { BudgetSelector } from './components/BudgetSelector';
 import { TargetCalculator } from './components/TargetCalculator';
 import { SankeyReport } from './components/SankeyReport';
 import { SortGroupsModal } from './components/SortGroupsModal';
-import { useApiKey, useBudgetId, useTakeHome } from './hooks/useApiKey';
+import { useApiKey, useBudgetId, useTakeHome, useConfidence } from './hooks/useApiKey';
 import { useCachedBudgetData, formatLastUpdated } from './hooks/useCachedBudgetData';
 import { useGroupSortOrder } from './hooks/useGroupSortOrder';
 import { useCategoryOverrides } from './hooks/useCategoryOverrides';
 import { fetchAllMonthDetails } from './api/ynab';
 import { transformYnabData, type Category, type CategoryGroup } from './api/transform';
-import { analyzeCategory } from './api/percentiles';
+import { analyzeCategory, analyzeBudget } from './api/percentiles';
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -30,6 +30,7 @@ function App() {
   const { sortOrder, setSortOrder, clearSortOrder } = useGroupSortOrder();
   const { overrides, setOverride, clearAll: clearOverrides, toggleExcludedMonth } = useCategoryOverrides();
   const { takeHome, takeHomeInput, setTakeHomeInput, clearTakeHome } = useTakeHome();
+  const { confidence, setConfidence } = useConfidence();
   const [showSortModal, setShowSortModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'budget' | 'reports'>('budget');
 
@@ -115,6 +116,29 @@ function App() {
     if (!selectedCategory) return null;
     return analyzeCategory(selectedCategory, selectedExcludedMonths);
   }, [selectedCategory, selectedExcludedMonths]);
+
+  const targetMap = useMemo(() => {
+    if (categories.length === 0) return {};
+    const exclusionsMap: Record<string, string[]> = {};
+    for (const [catId, ov] of Object.entries(overrides)) {
+      if (ov.excludedMonths && ov.excludedMonths.length > 0) {
+        exclusionsMap[catId] = ov.excludedMonths;
+      }
+    }
+    const analysis = analyzeBudget(categories, groups, exclusionsMap);
+    const map: Record<string, number> = {};
+    for (const a of analysis.categories) {
+      const ov = overrides[a.categoryId];
+      if (ov?.target !== undefined) {
+        map[a.categoryId] = ov.target;
+      } else if (a.isIrregular) {
+        map[a.categoryId] = a.sinkingFundMonthly;
+      } else {
+        map[a.categoryId] = confidence === 50 ? a.p50 : confidence === 75 ? a.p75 : a.p90;
+      }
+    }
+    return map;
+  }, [categories, groups, overrides, confidence]);
 
   const includedStats = useMemo(() => {
     if (!selectedCategory) return { total: 0, average: 0, count: 0 };
@@ -277,11 +301,13 @@ function App() {
                 takeHome={takeHome}
                 takeHomeInput={takeHomeInput}
                 onTakeHomeChange={setTakeHomeInput}
+                confidence={confidence}
+                onConfidenceChange={setConfidence}
               />
             )}
 
             {activeTab === 'reports' && (
-              <SankeyReport categories={categories} groups={groups} takeHome={takeHome} />
+              <SankeyReport categories={categories} groups={groups} takeHome={takeHome} targetMap={targetMap} />
             )}
           </>
         )}

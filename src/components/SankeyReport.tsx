@@ -7,6 +7,7 @@ interface SankeyReportProps {
   categories: Category[];
   groups: CategoryGroup[];
   takeHome: number | null;
+  targetMap: Record<string, number>;
 }
 
 interface SankeyNode {
@@ -45,7 +46,7 @@ const GROUP_PALETTE = [
   '#84cc16',
 ];
 
-export function SankeyReport({ categories, groups, takeHome }: SankeyReportProps) {
+export function SankeyReport({ categories, groups, takeHome, targetMap }: SankeyReportProps) {
   const sankeyData = useMemo(() => {
     if (!takeHome || takeHome <= 0) return null;
 
@@ -56,12 +57,12 @@ export function SankeyReport({ categories, groups, takeHome }: SankeyReportProps
 
     nodes.push({ id: 'TakeHome', nodeColor: NODE_COLORS.income, nodeLabel: 'Take Home' });
 
-    let totalExpenseAvg = 0;
+    let totalExpenseTarget = 0;
     let colorIdx = 0;
 
     for (const group of expenseGroups) {
       const groupCats = categories.filter(c => c.groupId === group.id);
-      const groupTotal = groupCats.reduce((sum, c) => sum + Math.abs(c.average), 0);
+      const groupTotal = groupCats.reduce((sum, c) => sum + (targetMap[c.id] ?? Math.abs(c.average)), 0);
       if (groupTotal === 0) continue;
 
       const groupColor = GROUP_PALETTE[colorIdx % GROUP_PALETTE.length];
@@ -70,18 +71,18 @@ export function SankeyReport({ categories, groups, takeHome }: SankeyReportProps
       const groupNodeId = `group_${group.id}`;
       nodes.push({ id: groupNodeId, nodeColor: groupColor, nodeLabel: group.name });
       links.push({ source: 'TakeHome', target: groupNodeId, value: groupTotal });
-      totalExpenseAvg += groupTotal;
+      totalExpenseTarget += groupTotal;
 
       for (const cat of groupCats) {
-        const catAvg = Math.abs(cat.average);
-        if (catAvg === 0) continue;
+        const catTarget = targetMap[cat.id] ?? Math.abs(cat.average);
+        if (catTarget === 0) continue;
         const catNodeId = `cat_${cat.id}`;
         nodes.push({ id: catNodeId, nodeColor: groupColor, nodeLabel: cat.name });
-        links.push({ source: groupNodeId, target: catNodeId, value: catAvg });
+        links.push({ source: groupNodeId, target: catNodeId, value: catTarget });
       }
     }
 
-    const remaining = Math.max(0, takeHome - totalExpenseAvg);
+    const remaining = Math.max(0, takeHome - totalExpenseTarget);
     if (remaining > 0) {
       nodes.push({ id: 'Remaining', nodeColor: NODE_COLORS.remaining, nodeLabel: 'Remaining' });
       links.push({ source: 'TakeHome', target: 'Remaining', value: remaining });
@@ -90,7 +91,7 @@ export function SankeyReport({ categories, groups, takeHome }: SankeyReportProps
     if (links.length === 0) return null;
 
     return { nodes, links };
-  }, [categories, groups, takeHome]);
+  }, [categories, groups, takeHome, targetMap]);
 
   if (!sankeyData) {
     return (
