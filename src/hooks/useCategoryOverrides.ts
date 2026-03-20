@@ -4,10 +4,6 @@ const STORAGE_KEY = 'ynab_category_overrides';
 
 export interface CategoryOverride {
   target?: number;
-  buffer?: number;
-  lockedTarget?: boolean;
-  lockedBuffer?: boolean;
-  targetPercentile?: 50 | 75 | 90;
   excludedMonths?: string[];
 }
 
