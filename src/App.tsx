@@ -6,13 +6,13 @@ import { BudgetSelector } from './components/BudgetSelector';
 import { TargetCalculator } from './components/TargetCalculator';
 import { SankeyReport } from './components/SankeyReport';
 import { SortGroupsModal } from './components/SortGroupsModal';
-import { useApiKey, useBudgetId, useTakeHome, useConfidence } from './hooks/useApiKey';
+import { useApiKey, useBudgetId, useTakeHome } from './hooks/useApiKey';
 import { useCachedBudgetData, formatLastUpdated } from './hooks/useCachedBudgetData';
 import { useGroupSortOrder } from './hooks/useGroupSortOrder';
 import { useCategoryOverrides } from './hooks/useCategoryOverrides';
 import { fetchAllMonthDetails } from './api/ynab';
 import { transformYnabData, type Category, type CategoryGroup } from './api/transform';
-import { analyzeCategory, analyzeBudget } from './api/percentiles';
+import { analyzeCategory, simulateCoverage } from './api/percentiles';
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -30,7 +30,6 @@ function App() {
   const { sortOrder, setSortOrder, clearSortOrder } = useGroupSortOrder();
   const { overrides, setOverride, clearAll: clearOverrides, toggleExcludedMonth } = useCategoryOverrides();
   const { takeHome, takeHomeInput, setTakeHomeInput, clearTakeHome } = useTakeHome();
-  const { confidence, setConfidence } = useConfidence();
   const [showSortModal, setShowSortModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'budget' | 'reports'>('budget');
 
@@ -119,26 +118,19 @@ function App() {
 
   const targetMap = useMemo(() => {
     if (categories.length === 0) return {};
-    const exclusionsMap: Record<string, string[]> = {};
-    for (const [catId, ov] of Object.entries(overrides)) {
-      if (ov.excludedMonths && ov.excludedMonths.length > 0) {
-        exclusionsMap[catId] = ov.excludedMonths;
-      }
-    }
-    const analysis = analyzeBudget(categories, groups, exclusionsMap);
     const map: Record<string, number> = {};
-    for (const a of analysis.categories) {
-      const ov = overrides[a.categoryId];
+    for (const cat of categories) {
+      const ov = overrides[cat.id];
       if (ov?.target !== undefined) {
-        map[a.categoryId] = ov.target;
-      } else if (a.isIrregular) {
-        map[a.categoryId] = a.sinkingFundMonthly;
+        map[cat.id] = ov.target;
+      } else if (cat.ynabTarget !== null && cat.ynabTarget !== undefined && cat.ynabTarget > 0) {
+        map[cat.id] = Math.round(cat.ynabTarget);
       } else {
-        map[a.categoryId] = confidence === 50 ? a.p50 : confidence === 75 ? a.p75 : a.p90;
+        map[cat.id] = Math.round(Math.abs(cat.average));
       }
     }
     return map;
-  }, [categories, groups, overrides, confidence]);
+  }, [categories, overrides]);
 
   const includedStats = useMemo(() => {
     if (!selectedCategory) return { total: 0, average: 0, count: 0 };
@@ -301,8 +293,6 @@ function App() {
                 takeHome={takeHome}
                 takeHomeInput={takeHomeInput}
                 onTakeHomeChange={setTakeHomeInput}
-                confidence={confidence}
-                onConfidenceChange={setConfidence}
               />
             )}
 
@@ -346,22 +336,44 @@ function App() {
                   <p className="text-xl font-bold text-blue-700">{formatCurrency(includedStats.total)}</p>
                 </div>
               </div>
-              {selectedCategoryAnalysis && (
-                <div className="grid grid-cols-3 gap-2 mb-6">
-                  <div className="p-2 bg-emerald-50 rounded-lg text-center">
-                    <p className="text-[10px] text-emerald-600 mb-0.5">P50</p>
-                    <p className="text-sm font-bold text-emerald-700">{formatCurrency(selectedCategoryAnalysis.p50)}</p>
+              {selectedCategoryAnalysis && (() => {
+                const target = targetMap[selectedCategory.id] ?? selectedCategoryAnalysis.recommendedTarget;
+                const coverage = simulateCoverage(
+                  selectedCategory.monthlyData,
+                  target,
+                  selectedExcludedMonths,
+                );
+                const ratio = coverage.totalMonths > 0 ? coverage.coveredMonths / coverage.totalMonths : 0;
+                const coverageBg = ratio >= 1 ? 'bg-emerald-50' : ratio >= 0.75 ? 'bg-amber-50' : 'bg-red-50';
+                const coverageTextSm = ratio >= 1 ? 'text-emerald-600' : ratio >= 0.75 ? 'text-amber-600' : 'text-red-600';
+                const coverageTextLg = ratio >= 1 ? 'text-emerald-700' : ratio >= 0.75 ? 'text-amber-700' : 'text-red-700';
+                return (
+                  <div className="grid grid-cols-2 gap-2 mb-6">
+                    <div className="p-3 bg-emerald-50 rounded-lg">
+                      <p className="text-[10px] text-emerald-600 mb-0.5">Your Target</p>
+                      <p className="text-lg font-bold text-emerald-700">{formatCurrency(target)}</p>
+                    </div>
+                    <div className={`p-3 ${coverageBg} rounded-lg`}>
+                      <p className={`text-[10px] ${coverageTextSm} mb-0.5`}>Coverage</p>
+                      <p className={`text-lg font-bold ${coverageTextLg}`}>
+                        {coverage.coveredMonths}/{coverage.totalMonths} mo
+                      </p>
+                      {coverage.maxShortfall > 0 && (
+                        <p className="text-[10px] text-slate-500">worst gap: {formatCurrency(coverage.maxShortfall)}</p>
+                      )}
+                    </div>
+                    {selectedCategoryAnalysis.spendingRange.min > 0 && (
+                      <div className="p-3 bg-slate-50 rounded-lg col-span-2">
+                        <p className="text-[10px] text-slate-500 mb-0.5">Typical Spending Range</p>
+                        <p className="text-sm font-medium text-slate-700">
+                          {formatCurrency(selectedCategoryAnalysis.spendingRange.min)} – {formatCurrency(selectedCategoryAnalysis.spendingRange.max)}
+                          <span className="text-slate-400 ml-1">(median {formatCurrency(selectedCategoryAnalysis.spendingRange.median)})</span>
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  <div className="p-2 bg-amber-50 rounded-lg text-center">
-                    <p className="text-[10px] text-amber-600 mb-0.5">P75</p>
-                    <p className="text-sm font-bold text-amber-700">{formatCurrency(selectedCategoryAnalysis.p75)}</p>
-                  </div>
-                  <div className="p-2 bg-red-50 rounded-lg text-center">
-                    <p className="text-[10px] text-red-600 mb-0.5">P90</p>
-                    <p className="text-sm font-bold text-red-700">{formatCurrency(selectedCategoryAnalysis.p90)}</p>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
 
               <div className="h-64 mb-6">
                 <div className="flex items-center justify-between mb-3">
@@ -394,12 +406,14 @@ function App() {
                         <Cell key={`cell-${index}`} fill={entry.fill} fillOpacity={entry.excluded ? 0.4 : 1} />
                       ))}
                     </Bar>
-                    {selectedCategoryAnalysis && (
-                      <>
-                        <ReferenceLine y={selectedCategoryAnalysis.p50} stroke="#22c55e" strokeDasharray="6 3" strokeWidth={1.5} label={{ value: 'P50', position: 'right', fill: '#22c55e', fontSize: 11, fontWeight: 600 }} />
-                        <ReferenceLine y={selectedCategoryAnalysis.p75} stroke="#f59e0b" strokeDasharray="6 3" strokeWidth={1.5} label={{ value: 'P75', position: 'right', fill: '#f59e0b', fontSize: 11, fontWeight: 600 }} />
-                        <ReferenceLine y={selectedCategoryAnalysis.p90} stroke="#ef4444" strokeDasharray="6 3" strokeWidth={1.5} label={{ value: 'P90', position: 'right', fill: '#ef4444', fontSize: 11, fontWeight: 600 }} />
-                      </>
+                    {selectedCategory && (
+                      <ReferenceLine
+                        y={targetMap[selectedCategory.id] ?? selectedCategoryAnalysis?.recommendedTarget ?? 0}
+                        stroke="#10b981"
+                        strokeDasharray="6 3"
+                        strokeWidth={2}
+                        label={{ value: 'Target', position: 'right', fill: '#10b981', fontSize: 11, fontWeight: 600 }}
+                      />
                     )}
                   </BarChart>
                 </ResponsiveContainer>

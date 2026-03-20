@@ -1,5 +1,12 @@
 import type { Category, CategoryGroup } from './transform';
 
+export interface CoverageResult {
+  coveredMonths: number;
+  totalMonths: number;
+  maxShortfall: number;
+  averageRollover: number;
+}
+
 export interface CategoryAnalysis {
   categoryId: string;
   categoryName: string;
@@ -13,6 +20,7 @@ export interface CategoryAnalysis {
   sinkingFundMonthly: number;
   bufferAmount: number;
   recommendedTarget: number;
+  spendingRange: { min: number; max: number; median: number };
 }
 
 export interface BudgetAnalysis {
@@ -38,6 +46,51 @@ function calculatePercentile(sortedValues: number[], p: number): number {
 }
 
 const IRREGULAR_ZERO_THRESHOLD = 4;
+
+/**
+ * Simulate a monthly budget target against historical spending data.
+ * Tracks a running balance: each month adds the target and subtracts actual spending.
+ * Returns how many months stayed solvent (balance >= 0) and the worst shortfall.
+ */
+export function simulateCoverage(
+  monthlyData: Record<string, number>,
+  target: number,
+  excludedMonths?: string[],
+): CoverageResult {
+  const excluded = new Set(excludedMonths || []);
+  const months = Object.entries(monthlyData)
+    .filter(([month]) => !excluded.has(month))
+    .map(([, val]) => Math.abs(val));
+
+  if (months.length === 0) {
+    return { coveredMonths: 0, totalMonths: 0, maxShortfall: 0, averageRollover: 0 };
+  }
+
+  let balance = 0;
+  let coveredMonths = 0;
+  let maxShortfall = 0;
+  let totalRollover = 0;
+
+  for (const spending of months) {
+    balance += target;
+    balance -= spending;
+    if (balance >= 0) {
+      coveredMonths++;
+      totalRollover += balance;
+    } else {
+      maxShortfall = Math.max(maxShortfall, Math.abs(balance));
+      // Reset balance after a shortfall (you'd pull from other categories, then start fresh)
+      balance = 0;
+    }
+  }
+
+  return {
+    coveredMonths,
+    totalMonths: months.length,
+    maxShortfall: Math.round(maxShortfall),
+    averageRollover: months.length > 0 ? Math.round(totalRollover / months.length) : 0,
+  };
+}
 
 export function analyzeCategory(
   category: Category,
@@ -78,6 +131,13 @@ export function analyzeCategory(
     recommendedTarget = p75;
   }
 
+  const nonZeroValues = filteredAbsValues.filter(v => v > 0);
+  const spendingRange = {
+    min: nonZeroValues.length > 0 ? Math.round(Math.min(...nonZeroValues)) : 0,
+    max: nonZeroValues.length > 0 ? Math.round(Math.max(...nonZeroValues)) : 0,
+    median: p50,
+  };
+
   return {
     categoryId: category.id,
     categoryName: category.name,
@@ -91,6 +151,7 @@ export function analyzeCategory(
     sinkingFundMonthly,
     bufferAmount,
     recommendedTarget,
+    spendingRange,
   };
 }
 

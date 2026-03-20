@@ -8,6 +8,8 @@ export interface Category {
   monthlyData: Record<string, number>;
   average: number;
   total: number;
+  ynabTarget: number | null;
+  goalType: string | null;
 }
 
 export interface CategoryGroup {
@@ -46,6 +48,8 @@ export function transformYnabData(months: YnabMonthDetail[]): {
     groupId: string;
     groupName: string;
     monthlyData: Record<string, number>;
+    ynabTarget: number | null;
+    goalType: string | null;
   }>();
 
   for (const monthDetail of sortedMonths) {
@@ -69,12 +73,20 @@ export function transformYnabData(months: YnabMonthDetail[]): {
           groupId: cat.category_group_id,
           groupName: cat.category_group_name,
           monthlyData: {},
+          ynabTarget: null,
+          goalType: null,
         });
       }
 
       const catData = categoryDataMap.get(cat.id)!;
       const amount = cat.activity / 1000;
       catData.monthlyData[formattedMonth] = amount;
+
+      // Always overwrite with the latest month's goal data (months are sorted chronologically)
+      if (cat.goal_target !== null && cat.goal_target !== undefined) {
+        catData.ynabTarget = cat.goal_target / 1000;
+        catData.goalType = cat.goal_type;
+      }
     }
   }
 
@@ -131,6 +143,8 @@ export function transformYnabData(months: YnabMonthDetail[]): {
       monthlyData: catData.monthlyData,
       average,
       total,
+      ynabTarget: catData.ynabTarget,
+      goalType: catData.goalType,
     });
   }
 
