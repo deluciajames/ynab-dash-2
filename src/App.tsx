@@ -10,7 +10,7 @@ import { useApiKey, useBudgetId, useTakeHome } from './hooks/useApiKey';
 import { useCachedBudgetData, formatLastUpdated } from './hooks/useCachedBudgetData';
 import { useGroupSortOrder } from './hooks/useGroupSortOrder';
 import { useCategoryOverrides } from './hooks/useCategoryOverrides';
-import { fetchAllMonthDetails } from './api/ynab';
+import { fetchAllMonthDetails, fetchCategoriesWithGoals } from './api/ynab';
 import { transformYnabData, type Category, type CategoryGroup } from './api/transform';
 import { analyzeCategory, simulateCoverage } from './api/percentiles';
 
@@ -49,8 +49,11 @@ function App() {
     setLoadError(null);
 
     try {
-      const months = await fetchAllMonthDetails(apiKey, budgetId);
-      const { categories: newCats, groups: newGroups, availableMonths: newMonths } = transformYnabData(months);
+      const [months, goalMap] = await Promise.all([
+        fetchAllMonthDetails(apiKey, budgetId),
+        fetchCategoriesWithGoals(apiKey, budgetId),
+      ]);
+      const { categories: newCats, groups: newGroups, availableMonths: newMonths } = transformYnabData(months, goalMap);
 
       setCategories(newCats);
       setGroups(newGroups);
