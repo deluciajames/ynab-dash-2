@@ -1,4 +1,4 @@
-import type { YnabMonthDetail } from './ynab';
+import type { YnabMonthDetail, GoalMap } from './ynab';
 
 export interface Category {
   id: string;
@@ -31,7 +31,7 @@ const INTERNAL_GROUP_NAMES = [
   'Hidden Categories',
 ];
 
-export function transformYnabData(months: YnabMonthDetail[]): {
+export function transformYnabData(months: YnabMonthDetail[], goalMap?: GoalMap): {
   categories: Category[];
   groups: CategoryGroup[];
   availableMonths: string[];
@@ -135,6 +135,11 @@ export function transformYnabData(months: YnabMonthDetail[]): {
         ? 'Savings'
         : 'Expense';
 
+    // Prefer goal data from the dedicated categories endpoint (goalMap) over month detail data
+    const goalInfo = goalMap?.[id];
+    const ynabTarget = goalInfo ? goalInfo.goal_target / 1000 : catData.ynabTarget;
+    const goalType = goalInfo ? goalInfo.goal_type : catData.goalType;
+
     categories.push({
       id,
       name: catData.name,
@@ -143,8 +148,8 @@ export function transformYnabData(months: YnabMonthDetail[]): {
       monthlyData: catData.monthlyData,
       average,
       total,
-      ynabTarget: catData.ynabTarget,
-      goalType: catData.goalType,
+      ynabTarget,
+      goalType,
     });
   }
 

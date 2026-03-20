@@ -115,6 +115,52 @@ export async function fetchCategoryGroups(
   return data;
 }
 
+export interface CategoryGoalInfo {
+  goal_target: number | null;
+  goal_type: string | null;
+}
+
+export type GoalMap = Record<string, CategoryGoalInfo>;
+
+interface YnabCategoryGroupWithCategories {
+  id: string;
+  name: string;
+  hidden: boolean;
+  deleted: boolean;
+  categories: Array<{
+    id: string;
+    hidden: boolean;
+    deleted: boolean;
+    goal_type: string | null;
+    goal_target: number | null;
+  }>;
+}
+
+export async function fetchCategoriesWithGoals(
+  token: string,
+  budgetId: string
+): Promise<GoalMap> {
+  const data = await ynabFetch<{ category_groups: YnabCategoryGroupWithCategories[] }>(
+    `/budgets/${budgetId}/categories`,
+    token
+  );
+
+  const goalMap: GoalMap = {};
+  for (const group of data.category_groups) {
+    if (!group.categories) continue;
+    for (const cat of group.categories) {
+      if (cat.hidden || cat.deleted) continue;
+      if (cat.goal_target !== null && cat.goal_target !== undefined) {
+        goalMap[cat.id] = {
+          goal_target: cat.goal_target,
+          goal_type: cat.goal_type,
+        };
+      }
+    }
+  }
+  return goalMap;
+}
+
 export async function validateToken(token: string): Promise<boolean> {
   try {
     await fetchBudgets(token);
