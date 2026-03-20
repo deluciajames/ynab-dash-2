@@ -2,12 +2,14 @@ import { useCallback } from 'react';
 import type { Category, CategoryGroup } from '../api/transform';
 
 const CACHE_PREFIX = 'ynab_budget_cache_';
+const CACHE_VERSION = 2;
 
 interface CachedData {
   categories: Category[];
   groups: CategoryGroup[];
   availableMonths: string[];
   lastUpdated: number;
+  version?: number;
 }
 
 function getCacheKey(budgetId: string): string {
@@ -20,7 +22,7 @@ export function useCachedBudgetData() {
       const raw = localStorage.getItem(getCacheKey(budgetId));
       if (!raw) return null;
       const parsed = JSON.parse(raw) as CachedData;
-      if (!parsed.categories || !parsed.groups || !parsed.availableMonths || !parsed.lastUpdated) {
+      if (!parsed.categories || !parsed.groups || !parsed.availableMonths || !parsed.lastUpdated || parsed.version !== CACHE_VERSION) {
         return null;
       }
       return parsed;
@@ -40,6 +42,7 @@ export function useCachedBudgetData() {
       groups,
       availableMonths,
       lastUpdated: Date.now(),
+      version: CACHE_VERSION,
     };
     try {
       localStorage.setItem(getCacheKey(budgetId), JSON.stringify(data));
