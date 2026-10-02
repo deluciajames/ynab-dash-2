@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { Key, LogOut, Loader2, AlertCircle } from 'lucide-react';
-import { validateToken } from '../api/ynab';
+import { useState } from "react";
+import { Key, LogOut, Loader2, AlertCircle } from "lucide-react";
+import { validateToken } from "../api/ynab";
 
 interface ApiKeyDialogProps {
   apiKey: string | null;
@@ -8,16 +8,20 @@ interface ApiKeyDialogProps {
   onDisconnect: () => void;
 }
 
-export function ApiKeyDialog({ apiKey, onConnect, onDisconnect }: ApiKeyDialogProps) {
+export function ApiKeyDialog({
+  apiKey,
+  onConnect,
+  onDisconnect,
+}: ApiKeyDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [inputValue, setInputValue] = useState('');
+  const [inputValue, setInputValue] = useState("");
   const [isValidating, setIsValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleConnect = async () => {
     const trimmed = inputValue.trim();
     if (!trimmed) {
-      setError('Please enter your API token.');
+      setError("Please enter your API token.");
       return;
     }
 
@@ -28,13 +32,13 @@ export function ApiKeyDialog({ apiKey, onConnect, onDisconnect }: ApiKeyDialogPr
       const valid = await validateToken(trimmed);
       if (valid) {
         onConnect(trimmed);
-        setInputValue('');
+        setInputValue("");
         setIsOpen(false);
       } else {
-        setError('Invalid token. Please check and try again.');
+        setError("Invalid token. Please check and try again.");
       }
     } catch {
-      setError('Could not connect to YNAB. Please check your token.');
+      setError("Could not connect to YNAB. Please check your token.");
     } finally {
       setIsValidating(false);
     }
@@ -51,29 +55,28 @@ export function ApiKeyDialog({ apiKey, onConnect, onDisconnect }: ApiKeyDialogPr
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-          isConnected
-            ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-            : 'bg-blue-600 text-white hover:bg-blue-700'
-        }`}
+        className={`connection-button ${isConnected ? "" : "disconnected"}`}
       >
         <Key className="w-4 h-4" />
-        {isConnected ? 'Connected to YNAB' : 'Connect to YNAB'}
+        {isConnected ? "Connected to YNAB" : "Connect to YNAB"}
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setIsOpen(false)}>
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center"
+          onClick={() => setIsOpen(false)}
+        >
           <div
             className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-semibold text-slate-900 mb-1">
-              {isConnected ? 'YNAB Connection' : 'Connect to YNAB'}
+              {isConnected ? "YNAB Connection" : "Connect to YNAB"}
             </h2>
             <p className="text-sm text-slate-500 mb-5">
               {isConnected
-                ? 'Your YNAB account is connected.'
-                : 'Enter your YNAB Personal Access Token to import your budget data.'}
+                ? "Your YNAB account is connected."
+                : "Enter your YNAB Personal Access Token to import your budget data."}
             </p>
 
             {isConnected ? (
@@ -83,8 +86,12 @@ export function ApiKeyDialog({ apiKey, onConnect, onDisconnect }: ApiKeyDialogPr
                     <Key className="w-4 h-4 text-emerald-600" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-emerald-800">Connected</p>
-                    <p className="text-xs text-emerald-600">Token: ****{apiKey.slice(-4)}</p>
+                    <p className="text-sm font-medium text-emerald-800">
+                      Connected
+                    </p>
+                    <p className="text-xs text-emerald-600">
+                      Token: ****{apiKey.slice(-4)}
+                    </p>
                   </div>
                 </div>
                 <button
@@ -108,7 +115,7 @@ export function ApiKeyDialog({ apiKey, onConnect, onDisconnect }: ApiKeyDialogPr
                       setInputValue(e.target.value);
                       setError(null);
                     }}
-                    onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
+                    onKeyDown={(e) => e.key === "Enter" && handleConnect()}
                     placeholder="Paste your token here..."
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     autoFocus
@@ -133,13 +140,13 @@ export function ApiKeyDialog({ apiKey, onConnect, onDisconnect }: ApiKeyDialogPr
                       Validating...
                     </>
                   ) : (
-                    'Connect'
+                    "Connect"
                   )}
                 </button>
 
                 <div className="p-3 bg-slate-50 rounded-lg">
                   <p className="text-xs text-slate-600">
-                    Get your token from{' '}
+                    Get your token from{" "}
                     <a
                       href="https://app.ynab.com/settings/developer"
                       target="_blank"
@@ -148,7 +155,8 @@ export function ApiKeyDialog({ apiKey, onConnect, onDisconnect }: ApiKeyDialogPr
                     >
                       YNAB Developer Settings
                     </a>
-                    . Your token is stored locally in your browser and never sent to any server other than YNAB.
+                    . Your token is stored locally in your browser and never
+                    sent to any server other than YNAB.
                   </p>
                 </div>
               </div>

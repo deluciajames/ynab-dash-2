@@ -1,4 +1,4 @@
-const BASE_URL = 'https://api.ynab.com/v1';
+const BASE_URL = "https://api.ynab.com/v1";
 
 export interface YnabBudgetSummary {
   id: string;
@@ -29,6 +29,13 @@ export interface YnabCategory {
   goal_target: number | null;
   goal_cadence: number | null;
   goal_months_to_budget: number | null;
+  goal_cadence_frequency?: number | null;
+  goal_target_date?: string | null;
+  goal_target_month?: string | null;
+  goal_needs_whole_amount?: boolean | null;
+  goal_overall_funded?: number | null;
+  goal_overall_left?: number | null;
+  goal_day?: number | null;
 }
 
 export interface YnabMonthDetail {
@@ -42,7 +49,7 @@ export interface YnabMonthDetail {
 async function ynabFetch<T>(path: string, token: string): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
     headers: {
-      'Authorization': `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
     },
   });
 
@@ -56,15 +63,23 @@ async function ynabFetch<T>(path: string, token: string): Promise<T> {
   return json.data;
 }
 
-export async function fetchBudgets(token: string): Promise<YnabBudgetSummary[]> {
-  const data = await ynabFetch<{ budgets: YnabBudgetSummary[] }>('/budgets', token);
+export async function fetchBudgets(
+  token: string,
+): Promise<YnabBudgetSummary[]> {
+  const data = await ynabFetch<{ budgets: YnabBudgetSummary[] }>(
+    "/budgets",
+    token,
+  );
   return data.budgets;
 }
 
-export async function fetchBudgetMonthsList(token: string, budgetId: string): Promise<{ month: string }[]> {
+export async function fetchBudgetMonthsList(
+  token: string,
+  budgetId: string,
+): Promise<{ month: string }[]> {
   const data = await ynabFetch<{ months: { month: string }[] }>(
     `/budgets/${budgetId}/months`,
-    token
+    token,
   );
   return data.months;
 }
@@ -72,21 +87,21 @@ export async function fetchBudgetMonthsList(token: string, budgetId: string): Pr
 export async function fetchAllMonthDetails(
   token: string,
   budgetId: string,
-  maxMonths: number = 12
+  maxMonths: number = 12,
 ): Promise<YnabMonthDetail[]> {
   const monthsList = await fetchBudgetMonthsList(token, budgetId);
 
   const now = new Date();
-  const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
 
   const validMonths = monthsList
-    .map(m => m.month)
-    .filter(m => m !== '0001-01-01' && m < currentMonthStr)
+    .map((m) => m.month)
+    .filter((m) => m !== "0001-01-01" && m < currentMonthStr)
     .sort()
     .slice(-maxMonths);
 
   const details = await Promise.all(
-    validMonths.map(month => fetchMonthDetail(token, budgetId, month))
+    validMonths.map((month) => fetchMonthDetail(token, budgetId, month)),
   );
 
   return details;
@@ -95,70 +110,51 @@ export async function fetchAllMonthDetails(
 export async function fetchMonthDetail(
   token: string,
   budgetId: string,
-  month: string
+  month: string,
 ): Promise<YnabMonthDetail> {
   const data = await ynabFetch<{ month: YnabMonthDetail }>(
     `/budgets/${budgetId}/months/${month}`,
-    token
+    token,
   );
   return data.month;
 }
 
 export async function fetchCategoryGroups(
   token: string,
-  budgetId: string
-): Promise<{ category_groups: YnabCategoryGroup[]; }> {
+  budgetId: string,
+): Promise<{ category_groups: YnabCategoryGroup[] }> {
   const data = await ynabFetch<{ category_groups: YnabCategoryGroup[] }>(
     `/budgets/${budgetId}/categories`,
-    token
+    token,
   );
   return data;
 }
 
-export interface CategoryGoalInfo {
-  goal_target: number | null;
-  goal_type: string | null;
-}
-
+// Keep metadata even when a category has no target or a target of zero.
+export type CategoryGoalInfo = YnabCategory;
 export type GoalMap = Record<string, CategoryGoalInfo>;
-
-interface YnabCategoryGroupWithCategories {
-  id: string;
-  name: string;
-  hidden: boolean;
-  deleted: boolean;
-  categories: Array<{
-    id: string;
-    hidden: boolean;
-    deleted: boolean;
-    goal_type: string | null;
-    goal_target: number | null;
-  }>;
-}
 
 export async function fetchCategoriesWithGoals(
   token: string,
-  budgetId: string
+  budgetId: string,
 ): Promise<GoalMap> {
-  const data = await ynabFetch<{ category_groups: YnabCategoryGroupWithCategories[] }>(
-    `/budgets/${budgetId}/categories`,
-    token
-  );
-
-  const goalMap: GoalMap = {};
+  const data = await ynabFetch<{
+    category_groups: (YnabCategoryGroup & { categories: YnabCategory[] })[];
+  }>(`/budgets/${budgetId}/categories`, token);
+  const result: GoalMap = {};
   for (const group of data.category_groups) {
-    if (!group.categories) continue;
-    for (const cat of group.categories) {
-      if (cat.hidden || cat.deleted) continue;
-      if (cat.goal_target !== null && cat.goal_target !== undefined) {
-        goalMap[cat.id] = {
-          goal_target: cat.goal_target,
-          goal_type: cat.goal_type,
-        };
-      }
+    if (group.deleted) continue;
+    for (const cat of group.categories || []) {
+      if (cat.deleted) continue;
+      result[cat.id] = {
+        ...cat,
+        category_group_id: group.id,
+        category_group_name: group.name,
+        hidden: Boolean(group.hidden || cat.hidden),
+      };
     }
   }
-  return goalMap;
+  return result;
 }
 
 export async function validateToken(token: string): Promise<boolean> {
