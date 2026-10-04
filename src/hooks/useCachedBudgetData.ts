@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import type { Category, CategoryGroup } from '../api/transform';
 
 const CACHE_PREFIX = 'ynab_budget_cache_';
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 
 interface CachedData {
   categories: Category[];

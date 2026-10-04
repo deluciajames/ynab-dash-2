@@ -1,157 +1,144 @@
-import type { YnabMonthDetail, GoalMap } from './ynab';
+import type { YnabMonthDetail, GoalMap, YnabCategory } from "./ynab";
 
+export interface GoalDetails {
+  type: string | null;
+  target: number | null;
+  cadence: number | null;
+  frequency: number | null;
+  day: number | null;
+  dueDate: string | null;
+  monthsToBudget: number | null;
+  funded: number | null;
+  remaining: number | null;
+  needsWholeAmount: boolean | null;
+}
 export interface Category {
   id: string;
   name: string;
   groupId: string;
-  type: 'Income' | 'Expense' | 'Savings' | 'Credit Card';
+  type: "Income" | "Expense" | "Savings" | "Credit Card";
   monthlyData: Record<string, number>;
   average: number;
   total: number;
   ynabTarget: number | null;
   goalType: string | null;
+  goal: GoalDetails | null;
+  balance: number;
+  hidden: boolean;
 }
-
 export interface CategoryGroup {
   id: string;
   name: string;
   emoji: string;
   isIncome: boolean;
 }
-
-function formatYnabMonth(isoMonth: string): string {
-  const date = new Date(isoMonth + 'T00:00:00');
-  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${monthNames[date.getMonth()]} ${date.getFullYear()}`;
-}
-
 const INTERNAL_GROUP_NAMES = [
-  'Internal Master Category',
-  'Credit Card Payments',
-  'Hidden Categories',
+  "Internal Master Category",
+  "Credit Card Payments",
 ];
-
-export function transformYnabData(months: YnabMonthDetail[], goalMap?: GoalMap): {
-  categories: Category[];
-  groups: CategoryGroup[];
-  availableMonths: string[];
-} {
-  const sortedMonths = [...months]
-    .filter(m => m.month !== '0001-01-01')
-    .sort((a, b) => a.month.localeCompare(b.month));
-
-  const availableMonths = sortedMonths.map(m => formatYnabMonth(m.month));
-
-  const groupMap = new Map<string, { name: string; isIncome: boolean }>();
-  const categoryDataMap = new Map<string, {
-    name: string;
-    groupId: string;
-    groupName: string;
-    monthlyData: Record<string, number>;
-    ynabTarget: number | null;
-    goalType: string | null;
-  }>();
-
-  for (const monthDetail of sortedMonths) {
-    const formattedMonth = formatYnabMonth(monthDetail.month);
-
-    for (const cat of monthDetail.categories) {
-      if (cat.hidden || cat.deleted) continue;
-      if (INTERNAL_GROUP_NAMES.some(n => cat.category_group_name === n)) continue;
-
-      if (!groupMap.has(cat.category_group_id)) {
-        groupMap.set(cat.category_group_id, {
-          name: cat.category_group_name,
-          isIncome: cat.category_group_name === 'Inflow: Ready to Assign' ||
-                    cat.category_group_name.toLowerCase().includes('income'),
-        });
-      }
-
-      if (!categoryDataMap.has(cat.id)) {
-        categoryDataMap.set(cat.id, {
-          name: cat.name,
-          groupId: cat.category_group_id,
-          groupName: cat.category_group_name,
-          monthlyData: {},
-          ynabTarget: null,
-          goalType: null,
-        });
-      }
-
-      const catData = categoryDataMap.get(cat.id)!;
-      const amount = cat.activity / 1000;
-      catData.monthlyData[formattedMonth] = amount;
-
-      // Always overwrite with the latest month's goal data (months are sorted chronologically)
-      if (cat.goal_target !== null && cat.goal_target !== undefined) {
-        catData.ynabTarget = cat.goal_target / 1000;
-        catData.goalType = cat.goal_type;
-      }
-    }
-  }
-
-  const groups: CategoryGroup[] = [];
-  const emojiForGroup = (name: string): string => {
-    const lower = name.toLowerCase();
-    if (lower.includes('income') || lower.includes('inflow')) return '💵';
-    if (lower.includes('home') || lower.includes('housing') || lower.includes('rent')) return '🏡';
-    if (lower.includes('food') || lower.includes('dining') || lower.includes('grocery')) return '🍽️';
-    if (lower.includes('transport') || lower.includes('car') || lower.includes('auto')) return '🚗';
-    if (lower.includes('subscription') || lower.includes('software')) return '📲';
-    if (lower.includes('health') || lower.includes('medical')) return '🏥';
-    if (lower.includes('entertainment') || lower.includes('fun')) return '🎮';
-    if (lower.includes('saving') || lower.includes('invest')) return '💰';
-    if (lower.includes('education') || lower.includes('learn')) return '📚';
-    if (lower.includes('gift') || lower.includes('charity')) return '🎁';
-    if (lower.includes('travel') || lower.includes('vacation')) return '✈️';
-    if (lower.includes('pet')) return '🐾';
-    if (lower.includes('cloth') || lower.includes('shopping')) return '🛍️';
-    if (lower.includes('utility') || lower.includes('utilities')) return '⚡';
-    return '📁';
+const dollars = (value: number | null | undefined) =>
+  value == null ? null : value / 1000;
+function goalDetails(cat: YnabCategory): GoalDetails | null {
+  if (!cat.goal_type) return null;
+  return {
+    type: cat.goal_type,
+    target: dollars(cat.goal_target),
+    cadence: cat.goal_cadence ?? null,
+    frequency: cat.goal_cadence_frequency ?? null,
+    day: cat.goal_day ?? null,
+    dueDate: cat.goal_target_date ?? cat.goal_target_month ?? null,
+    monthsToBudget: cat.goal_months_to_budget ?? null,
+    funded: dollars(cat.goal_overall_funded),
+    remaining: dollars(cat.goal_overall_left),
+    needsWholeAmount: cat.goal_needs_whole_amount ?? null,
   };
-
-  for (const [id, data] of groupMap) {
-    groups.push({
-      id,
-      name: data.name,
-      emoji: emojiForGroup(data.name),
-      isIncome: data.isIncome,
-    });
+}
+export function transformYnabData(
+  months: YnabMonthDetail[],
+  goalMap: GoalMap = {},
+) {
+  const sorted = [...months]
+    .filter((m) => m.month !== "0001-01-01")
+    .sort((a, b) => a.month.localeCompare(b.month));
+  const groups = new Map<string, CategoryGroup>();
+  const categories = new Map<string, Category>();
+  function ensure(cat: YnabCategory) {
+    if (cat.deleted || INTERNAL_GROUP_NAMES.includes(cat.category_group_name))
+      return null;
+    const isIncome =
+      cat.category_group_name === "Inflow: Ready to Assign" ||
+      cat.name === "Inflow: Ready to Assign";
+    if (!groups.has(cat.category_group_id))
+      groups.set(cat.category_group_id, {
+        id: cat.category_group_id,
+        name: cat.category_group_name,
+        emoji: "",
+        isIncome,
+      });
+    if (!categories.has(cat.id))
+      categories.set(cat.id, {
+        id: cat.id,
+        name: cat.name,
+        groupId: cat.category_group_id,
+        type: isIncome ? "Income" : "Expense",
+        monthlyData: {},
+        average: 0,
+        total: 0,
+        ynabTarget: null,
+        goalType: null,
+        goal: null,
+        balance: 0,
+        hidden: cat.hidden,
+      });
+    return categories.get(cat.id)!;
   }
-
-  const categories: Category[] = [];
-
-  for (const [id, catData] of categoryDataMap) {
-    const values = Object.values(catData.monthlyData);
-    const total = values.reduce((a, b) => a + b, 0);
-    const average = values.length > 0 ? total / values.length : 0;
-
-    const groupInfo = groupMap.get(catData.groupId);
-    const isIncomeGroup = groupInfo?.isIncome ?? false;
-
-    const type: Category['type'] = isIncomeGroup
-      ? 'Income'
-      : (catData.name.toLowerCase().includes('saving') || catData.name.toLowerCase().includes('invest'))
-        ? 'Savings'
-        : 'Expense';
-
-    // Prefer goal data from the dedicated categories endpoint (goalMap) over month detail data
-    const goalInfo = goalMap?.[id];
-    const ynabTarget = goalInfo ? goalInfo.goal_target / 1000 : catData.ynabTarget;
-    const goalType = goalInfo ? goalInfo.goal_type : catData.goalType;
-
-    categories.push({
-      id,
-      name: catData.name,
-      groupId: catData.groupId,
-      type,
-      monthlyData: catData.monthlyData,
-      average,
-      total,
-      ynabTarget,
-      goalType,
+  for (const month of sorted)
+    for (const cat of month.categories) {
+      const item = ensure({
+        ...cat,
+        category_group_name:
+          cat.category_group_name ||
+          goalMap[cat.id]?.category_group_name ||
+          "Archived categories",
+      });
+      if (item) item.monthlyData[month.month] = cat.activity / 1000;
+    }
+  // Current category metadata controls targets, grouping and names; historical goals can be stale.
+  for (const cat of Object.values(goalMap)) {
+    const item = ensure(cat);
+    if (!item) continue;
+    groups.set(cat.category_group_id, {
+      id: cat.category_group_id,
+      name: cat.category_group_name,
+      emoji: "",
+      isIncome:
+        cat.category_group_name === "Inflow: Ready to Assign" ||
+        cat.name === "Inflow: Ready to Assign",
     });
+    item.name = cat.name;
+    item.groupId = cat.category_group_id;
+    item.hidden = cat.hidden;
+    item.balance = cat.balance / 1000;
+    item.goal = goalDetails(cat);
+    item.ynabTarget = dollars(cat.goal_target);
+    item.goalType = cat.goal_type;
+    if (cat.goal_type === "MF" || cat.goal_type === "TB") item.type = "Savings";
   }
-
-  return { categories, groups, availableMonths };
+  for (const item of categories.values()) {
+    const vals = Object.values(item.monthlyData);
+    item.total = vals.reduce((s, n) => s - n, 0);
+    item.average = vals.length ? item.total / vals.length : 0;
+  }
+  return {
+    categories: [...categories.values()],
+    groups: [...groups.values()].sort((a, b) => {
+      const order = [
+        ...new Set(Object.values(goalMap).map((c) => c.category_group_id)),
+      ];
+      const ai = order.indexOf(a.id),
+        bi = order.indexOf(b.id);
+      return (ai < 0 ? Infinity : ai) - (bi < 0 ? Infinity : bi) || 0;
+    }),
+    availableMonths: sorted.map((m) => m.month),
+  };
 }

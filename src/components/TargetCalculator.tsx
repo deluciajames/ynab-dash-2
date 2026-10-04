@@ -1,451 +1,687 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ChevronDown, ChevronRight, AlertTriangle, TrendingUp, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
-import type { Category, CategoryGroup } from '../api/transform';
-import { analyzeBudget, simulateCoverage, type CategoryAnalysis, type CoverageResult } from '../api/percentiles';
-import { applySortOrder } from '../hooks/useGroupSortOrder';
-import type { OverridesMap, CategoryOverride } from '../hooks/useCategoryOverrides';
+import { Fragment, useMemo, useState } from "react";
+import type { Category, CategoryGroup } from "../api/transform";
+import {
+  totalPlan,
+  type CategoryOverride,
+  type CategoryPlan,
+  type OverridesMap,
+} from "../api/planning";
+import { applySortOrder } from "../hooks/useGroupSortOrder";
+import { money } from "../lib/money";
+import { AmountInput } from "./AmountInput";
 
-interface TargetCalculatorProps {
+interface Props {
   categories: Category[];
   groups: CategoryGroup[];
   groupSortOrder: string[];
   overrides: OverridesMap;
-  onSetOverride: (categoryId: string, override: Partial<CategoryOverride>) => void;
+  plans: Record<string, CategoryPlan>;
+  onSetOverride: (id: string, change: Partial<CategoryOverride>) => void;
+  onSetOverrides: (changes: Record<string, Partial<CategoryOverride>>) => void;
   onSelectCategory: (category: Category) => void;
   takeHome: number | null;
   takeHomeInput: string;
   onTakeHomeChange: (value: string) => void;
+  annualReserve: number;
+  onReserveChange: (value: number) => void;
+  onReset: () => void;
+  availableMonths: string[];
 }
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
-function ValueCell({
-  value,
-  onSave,
-  colorClass,
-  bgClass,
-}: {
-  value: number;
-  onSave: (val: number) => void;
-  colorClass: string;
-  bgClass: string;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [editValue, setEditValue] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [editing]);
-
-  const handleStartEdit = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditValue(String(Math.round(value)));
-    setEditing(true);
-  };
-
-  const handleSave = () => {
-    const num = parseFloat(editValue);
-    if (!isNaN(num) && num >= 0) {
-      onSave(Math.round(num));
-    }
-    setEditing(false);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleSave();
-    if (e.key === 'Escape') setEditing(false);
-  };
-
-  if (editing) {
-    return (
-      <td className={`py-1 px-2 ${bgClass}`} onClick={e => e.stopPropagation()}>
-        <div className="flex items-center gap-1 justify-end">
-          <span className="text-xs text-slate-400">$</span>
-          <input
-            ref={inputRef}
-            type="number"
-            value={editValue}
-            onChange={e => setEditValue(e.target.value)}
-            onBlur={handleSave}
-            onKeyDown={handleKeyDown}
-            className="w-20 px-1.5 py-1 text-right text-sm border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-        </div>
-      </td>
-    );
-  }
-
-  return (
-    <td className={`py-2 px-2 ${bgClass}`} onClick={e => e.stopPropagation()}>
-      <div className="flex items-center justify-end">
-        <span
-          className={`font-medium cursor-pointer hover:underline ${colorClass}`}
-          onClick={handleStartEdit}
-        >
-          {formatCurrency(value)}
-        </span>
-      </div>
-    </td>
-  );
-}
-
-function CoverageBadge({ coverage }: { coverage: CoverageResult }) {
-  if (coverage.totalMonths === 0) return <td className="py-2 px-3 text-center text-slate-400">—</td>;
-
-  const ratio = coverage.coveredMonths / coverage.totalMonths;
-  let colorClass: string;
-  let bgClass: string;
-  let Icon: typeof CheckCircle2;
-
-  if (ratio >= 1) {
-    colorClass = 'text-emerald-700';
-    bgClass = 'bg-emerald-50';
-    Icon = CheckCircle2;
-  } else if (ratio >= 0.75) {
-    colorClass = 'text-amber-700';
-    bgClass = 'bg-amber-50';
-    Icon = AlertCircle;
-  } else {
-    colorClass = 'text-red-700';
-    bgClass = 'bg-red-50';
-    Icon = AlertTriangle;
-  }
-
-  return (
-    <td className="py-2 px-3">
-      <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${colorClass} ${bgClass}`}>
-        <Icon className="w-3 h-3" />
-        <span>{coverage.coveredMonths}/{coverage.totalMonths} mo</span>
-      </div>
-      {coverage.maxShortfall > 0 && (
-        <div className="text-[10px] text-slate-400 mt-0.5">
-          worst: -{formatCurrency(coverage.maxShortfall)}
-        </div>
-      )}
-    </td>
-  );
-}
-
-function SpendingRange({ analysis }: { analysis: CategoryAnalysis }) {
-  if (analysis.isIrregular) {
-    return (
-      <td className="py-2 px-3 text-xs text-slate-500">
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">
-          <Clock className="w-3 h-3" />
-          Sinking
-        </span>
-      </td>
-    );
-  }
-
-  const { min, max } = analysis.spendingRange;
-  if (min === 0 && max === 0) return <td className="py-2 px-3 text-slate-400">—</td>;
-
-  return (
-    <td className="py-2 px-3 text-xs text-slate-500">
-      {formatCurrency(min)} – {formatCurrency(max)}
-    </td>
-  );
-}
-
+type Filter = "all" | "attention" | "need" | "room";
 export function TargetCalculator({
   categories,
   groups,
   groupSortOrder,
   overrides,
+  plans,
   onSetOverride,
+  onSetOverrides,
   onSelectCategory,
   takeHome,
   takeHomeInput,
   onTakeHomeChange,
-}: TargetCalculatorProps) {
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-
-  const exclusionsMap = useMemo(() => {
-    const map: Record<string, string[]> = {};
-    for (const [catId, ov] of Object.entries(overrides)) {
-      if (ov.excludedMonths && ov.excludedMonths.length > 0) {
-        map[catId] = ov.excludedMonths;
-      }
-    }
-    return map;
-  }, [overrides]);
-
-  const analysis = useMemo(
-    () => analyzeBudget(categories, groups, exclusionsMap),
-    [categories, groups, exclusionsMap]
-  );
-
+  annualReserve,
+  onReserveChange,
+  onReset,
+  availableMonths,
+}: Props) {
+  const [opened, setOpened] = useState<Set<string>>(new Set()),
+    [offOpened, setOffOpened] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState<Filter>("all"),
+    [query, setQuery] = useState(""),
+    [autoOpen, setAutoOpen] = useState(true),
+    [notice, setNotice] = useState("");
   const expenseGroups = useMemo(
-    () => applySortOrder(groups.filter(g => !g.isIncome), groupSortOrder),
-    [groups, groupSortOrder]
+    () =>
+      applySortOrder(
+        groups.filter((g) => !g.isIncome),
+        groupSortOrder,
+      ),
+    [groups, groupSortOrder],
   );
-
-  const groupedAnalyses = useMemo(() => {
-    const grouped: Record<string, CategoryAnalysis[]> = {};
-    for (const g of expenseGroups) {
-      grouped[g.id] = analysis.categories
-        .filter(a => a.groupId === g.id)
-        .sort((a, b) => a.categoryName.localeCompare(b.categoryName));
-    }
-    return grouped;
-  }, [analysis, expenseGroups]);
-
-  // Get the effective target: user override > YNAB target > recommended (p75 / sinking fund)
-  const getEffectiveTarget = (a: CategoryAnalysis): number => {
-    const ov = overrides[a.categoryId];
-    if (ov?.target !== undefined) return ov.target;
-    const cat = categories.find(c => c.id === a.categoryId);
-    if (cat?.ynabTarget !== null && cat?.ynabTarget !== undefined && cat.ynabTarget > 0) {
-      return Math.round(cat.ynabTarget);
-    }
-    return a.recommendedTarget;
+  const expenseCategories = categories.filter((c) => c.type !== "Income");
+  const totals = totalPlan(
+      expenseCategories.map((c) => plans[c.id]),
+      annualReserve,
+    ),
+    left = takeHome === null ? null : takeHome - totals.total;
+  const confirmed = totals.missingTargets === 0 && takeHome !== null,
+    over = confirmed && left !== null && left < 0;
+  const filtering = query.trim() !== "" || filter !== "all";
+  const kind = (p: CategoryPlan) =>
+    p.current === null || p.need === null
+      ? "need"
+      : p.discrepancy! < -0.5
+        ? "need"
+        : p.discrepancy! > Math.max(5, p.current * 0.2)
+          ? "room"
+          : "steady";
+  const matches = (c: Category, g: CategoryGroup) => {
+    if (
+      !(c.name + " " + g.name)
+        .toLowerCase()
+        .includes(query.trim().toLowerCase())
+    )
+      return false;
+    return (
+      filter === "all" ||
+      (filter === "attention" &&
+        ["need", "room"].includes(kind(plans[c.id]))) ||
+      kind(plans[c.id]) === filter
+    );
   };
-
-  // Compute coverage for each category
-  const coverageMap = useMemo(() => {
-    const map: Record<string, CoverageResult> = {};
-    for (const a of analysis.categories) {
-      const target = getEffectiveTarget(a);
-      const cat = categories.find(c => c.id === a.categoryId);
-      if (cat) {
-        map[a.categoryId] = simulateCoverage(
-          cat.monthlyData,
-          target,
-          exclusionsMap[a.categoryId],
-        );
-      }
+  const ongoing = expenseCategories.filter(
+      (c) => plans[c.id].type !== "oneoff",
+    ),
+    oneOff = expenseCategories.filter((c) => plans[c.id].type === "oneoff");
+  const listed = expenseGroups
+    .map((g) => ({ g, active: ongoing.filter((c) => c.groupId === g.id) }))
+    .map((x) => ({ ...x, shown: x.active.filter((c) => matches(c, x.g)) }))
+    .filter((x) => x.shown.length);
+  const toggle = (id: string, off = false) => {
+    if (off) {
+      setOffOpened((old) => {
+        const next = new Set(old);
+        next.has(id) ? next.delete(id) : next.add(id);
+        return next;
+      });
+      return;
     }
-    return map;
-  }, [analysis, categories, overrides, exclusionsMap]);
-
-  const groupTotals = useMemo(() => {
-    const totals: Record<string, { target: number }> = {};
-    for (const g of expenseGroups) {
-      const cats = groupedAnalyses[g.id] || [];
-      totals[g.id] = {
-        target: cats.reduce((s, a) => s + getEffectiveTarget(a), 0),
-      };
-    }
-    return totals;
-  }, [groupedAnalyses, expenseGroups, overrides, categories]);
-
-  const totalTarget = useMemo(() => {
-    return Object.values(groupTotals).reduce((s, g) => s + g.target, 0);
-  }, [groupTotals]);
-
-  const overBudget = takeHome !== null && totalTarget > takeHome;
-  const remaining = takeHome !== null ? takeHome - totalTarget : null;
-
-  const toggleGroup = (groupId: string) => {
-    setCollapsedGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(groupId)) next.delete(groupId);
-      else next.add(groupId);
-      return next;
-    });
+    const base =
+      filtering && autoOpen
+        ? new Set(listed.map((x) => x.g.id))
+        : new Set(opened);
+    base.has(id) ? base.delete(id) : base.add(id);
+    setOpened(base);
+    setAutoOpen(false);
   };
-
-  const handleTargetSave = (categoryId: string, val: number) => {
-    onSetOverride(categoryId, { target: val });
+  const mark = (cs: Category[], oneOffValue: boolean) => {
+    onSetOverrides(
+      Object.fromEntries(
+        cs.map((c) => [
+          c.id,
+          {
+            oneOff: oneOffValue,
+            ...(!oneOffValue && overrides[c.id]?.fundingType === "oneoff"
+              ? { fundingType: "monthly" as const }
+              : {}),
+          },
+        ]),
+      ),
+    );
+    if (oneOffValue)
+      setOffOpened((old) => new Set([...old, ...cs.map((c) => c.groupId)]));
+    else setOpened((old) => new Set([...old, ...cs.map((c) => c.groupId)]));
+    setNotice(
+      `${cs.length === 1 ? cs[0].name : `${cs.length} categories`} ${oneOffValue ? "moved to One-Off. History is preserved." : "returned to the ongoing plan."}`,
+    );
   };
-
+  const planAs = (cs: Category[], label: string) => {
+    const off = cs.filter((c) => plans[c.id].type === "oneoff").length,
+      value = off === cs.length ? "oneoff" : off ? "mixed" : "ongoing";
+    return (
+      <select
+        className="plan-type"
+        aria-label={`Plan type for ${label}`}
+        value={value}
+        onChange={(e) => {
+          if (e.target.value !== "mixed") mark(cs, e.target.value === "oneoff");
+        }}
+      >
+        {value === "mixed" && <option value="mixed">Mixed</option>}
+        <option value="ongoing">Ongoing</option>
+        <option value="oneoff">One-off</option>
+      </select>
+    );
+  };
+  const apply = (cs: Category[]) => {
+    const eligible = cs.filter(
+      (c) =>
+        plans[c.id].recommendation !== null && plans[c.id].type !== "oneoff",
+    );
+    onSetOverrides(
+      Object.fromEntries(
+        eligible.map((c) => [c.id, { target: plans[c.id].recommendation! }]),
+      ),
+    );
+    setNotice(
+      `Suggestions applied to ${eligible.length} ${eligible.length === 1 ? "category" : "categories"}. Your YNAB budget stays unchanged.`,
+    );
+  };
+  const applyButton = (c: Category) => {
+    const p = plans[c.id],
+      done = p.recommendation === p.proposed;
+    return p.recommendation === null ? (
+      <span className="pending">Review inputs</span>
+    ) : (
+      <button
+        className="apply"
+        disabled={done}
+        aria-label={`Apply recommendation for ${c.name}`}
+        onClick={() => onSetOverride(c.id, { target: p.recommendation! })}
+      >
+        {done ? "Applied" : `Use ${money(p.recommendation)}`}
+      </button>
+    );
+  };
+  const groupTotals = (cs: Category[]) => {
+    const values = cs.map((c) => plans[c.id]),
+      need = values.every((p) => p.need !== null)
+        ? values.reduce((s, p) => s + p.need!, 0)
+        : null;
+    const current = values.every((p) => p.current !== null)
+      ? values.reduce((s, p) => s + p.current!, 0)
+      : null;
+    const proposed = values.every((p) => p.proposed !== null)
+      ? values.reduce((s, p) => s + p.proposed!, 0)
+      : null;
+    return { need, current, proposed };
+  };
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end gap-6">
+    <>
+      <div className="heading">
         <div>
-          <label className="block text-sm font-medium text-slate-600 mb-1.5">Monthly Take-Home</label>
-          <div className="flex items-center gap-1">
-            <span className="text-slate-400 text-sm">$</span>
+          <div className="eyebrow">Your monthly plan</div>
+          <h1>A clear view. A balanced plan.</h1>
+          <p>Everyday spending, future goals, and life’s one-off expenses.</p>
+        </div>
+        <div className="quiet last-window">
+          Last {availableMonths.length} completed months
+        </div>
+      </div>
+      <div className="summary">
+        <section className="card">
+          <label htmlFor="income">Monthly take-home income</label>
+          <div className="amount">
+            <span className="currency-sign">$</span>
             <input
+              id="income"
+              className="income"
               type="number"
+              min="0"
+              step="any"
               value={takeHomeInput}
               onChange={(e) => onTakeHomeChange(e.target.value)}
-              placeholder="5,000"
-              className="w-32 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="0"
             />
           </div>
+          <small>Your confirmed planning amount · editable</small>
+        </section>
+        <section className="card">
+          <div className="label">Proposed monthly plan</div>
+          <div id="total" className="amount">
+            {totals.missingTargets ? "At least " : ""}
+            {money(totals.total)}
+          </div>
+          <small>
+            Includes {money(annualReserve / 12)}/mo for the unexpected
+          </small>
+        </section>
+        <section className={`card room ${over ? "negative" : ""}`}>
+          <div className="label">
+            {totals.missingTargets
+              ? "Plan incomplete"
+              : takeHome === null
+                ? "Income needed"
+                : over
+                  ? "Over your income"
+                  : "Left to assign"}
+          </div>
+          <div id="remaining" className="amount" aria-live="polite">
+            {confirmed && left !== null ? money(Math.abs(left)) : "—"}
+          </div>
+          <small>
+            {totals.missingTargets
+              ? `${totals.missingTargets} targets need review`
+              : takeHome === null
+                ? "Enter income to check the plan"
+                : over
+                  ? "Reduce your proposed contributions"
+                  : "Includes reserves and savings"}
+          </small>
+          <div className="meter">
+            <span
+              style={{
+                width: confirmed
+                  ? `${takeHome! > 0 ? Math.min(100, (totals.total / takeHome!) * 100) : 100}%`
+                  : "0%",
+              }}
+            />
+          </div>
+        </section>
+      </div>
+      <div
+        className={`notice ${totals.missingTargets ? "warning-notice" : ""}`}
+      >
+        <span>
+          {totals.missingTargets ? (
+            `${totals.missingTargets} categories have no monthly contribution yet. Set a proposed amount or review their recommendation before treating this plan as complete.`
+          ) : (
+            <>
+              Choose <b>One-off</b> on a category or group to remove its ongoing
+              allocation. History stays intact.
+            </>
+          )}
+        </span>
+      </div>
+      <div className="toolbar">
+        <h2>Ongoing category groups</h2>
+        <div className="filters" aria-label="Filter categories">
+          {(
+            [
+              ["all", "All"],
+              ["attention", "Needs attention"],
+              ["need", "Needs more"],
+              ["room", "Room to reduce"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              className={filter === key ? "active" : ""}
+              aria-pressed={filter === key}
+              onClick={() => {
+                setFilter(key);
+                setAutoOpen(true);
+              }}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
-
-      {overBudget && (
-        <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
-          <p className="text-sm text-amber-800">
-            Your budget ({formatCurrency(totalTarget)}) exceeds your take-home ({formatCurrency(takeHome!)}) by{' '}
-            <span className="font-semibold">{formatCurrency(totalTarget - takeHome!)}</span>.
-            Consider reducing targets in categories where coverage is strong.
-          </p>
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white rounded-lg border border-slate-200 p-5">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-blue-600" />
-            </div>
-            <span className="text-sm font-medium text-slate-600">Monthly Budget</span>
-          </div>
-          <div className="text-3xl font-bold text-slate-900">{formatCurrency(totalTarget)}</div>
-          <p className="text-xs text-slate-500 mt-1">Sum of all category targets</p>
-        </div>
-
-        <div className={`rounded-lg border-2 p-5 ${
-          remaining === null
-            ? 'bg-slate-50 border-slate-200'
-            : remaining >= 0
-              ? 'bg-emerald-50 border-emerald-200'
-              : 'bg-red-50 border-red-200'
-        }`}>
-          <div className="flex items-center gap-3 mb-3">
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-              remaining === null ? 'bg-slate-100' : remaining >= 0 ? 'bg-emerald-100' : 'bg-red-100'
-            }`}>
-              <TrendingUp className={`w-5 h-5 ${
-                remaining === null ? 'text-slate-400' : remaining >= 0 ? 'text-emerald-600' : 'text-red-600'
-              }`} />
-            </div>
-            <span className="text-sm font-medium text-slate-600">
-              {remaining === null ? 'Remaining' : remaining >= 0 ? 'Remaining' : 'Over Budget'}
-            </span>
-          </div>
-          <div className={`text-3xl font-bold ${
-            remaining === null ? 'text-slate-400' : remaining >= 0 ? 'text-emerald-600' : 'text-red-600'
-          }`}>
-            {remaining === null ? '—' : formatCurrency(Math.abs(remaining))}
-          </div>
-          <p className="text-xs text-slate-500 mt-1">
-            {remaining === null ? 'Enter take-home to see' : 'After all category targets'}
-          </p>
-        </div>
+      <div className="controls">
+        <input
+          className="search"
+          type="search"
+          aria-label="Search categories or groups"
+          placeholder="Find a category or group…"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setAutoOpen(true);
+          }}
+        />
+        <button
+          className="quiet"
+          onClick={() => {
+            setOpened(new Set());
+            setAutoOpen(false);
+          }}
+        >
+          Collapse all
+        </button>
+        <button
+          className="quiet"
+          onClick={() => {
+            setOpened(new Set(listed.map((x) => x.g.id)));
+            setAutoOpen(false);
+          }}
+        >
+          Expand shown groups
+        </button>
+        <span className="counts">
+          {listed.length} groups ·{" "}
+          {listed.reduce((s, x) => s + x.shown.length, 0)} of {ongoing.length}{" "}
+          ongoing categories
+        </span>
       </div>
-
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left py-3 px-4 font-semibold text-slate-700 sticky left-0 bg-slate-50 min-w-[250px]">Category</th>
-                <th className="text-right py-3 px-2 font-semibold text-emerald-700 bg-emerald-50 min-w-[100px]">Target</th>
-                <th className="text-left py-3 px-3 font-semibold text-slate-700 min-w-[120px]">Typical Range</th>
-                <th className="text-left py-3 px-3 font-semibold text-slate-700 min-w-[130px]">Coverage</th>
-              </tr>
-            </thead>
-            <tbody>
-              {expenseGroups.map(group => {
-                const groupCats = groupedAnalyses[group.id] || [];
-                if (groupCats.length === 0) return null;
-                const isCollapsed = collapsedGroups.has(group.id);
-                const gt = groupTotals[group.id];
-
-                // Aggregate coverage for group
-                const groupCoveredMonths = groupCats.reduce((s, a) => {
-                  const c = coverageMap[a.categoryId];
-                  return s + (c ? c.coveredMonths : 0);
-                }, 0);
-                const groupTotalMonths = groupCats.reduce((s, a) => {
-                  const c = coverageMap[a.categoryId];
-                  return s + (c ? c.totalMonths : 0);
-                }, 0);
-
-                return (
-                  <React.Fragment key={group.id}>
-                    <tr
-                      className="bg-slate-100 border-b border-slate-200 cursor-pointer hover:bg-slate-150"
-                      onClick={() => toggleGroup(group.id)}
-                    >
-                      <td className="py-2.5 px-4 font-semibold text-slate-800 sticky left-0 bg-slate-100">
-                        <div className="flex items-center gap-2">
-                          {isCollapsed ? <ChevronRight className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-                          <span>{group.emoji}</span>
-                          <span>{group.name}</span>
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-2 text-right font-semibold text-emerald-700 bg-emerald-50/50">
-                        {formatCurrency(gt?.target || 0)}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-500">—</td>
-                      <td className="py-2.5 px-3">
-                        {groupTotalMonths > 0 && (
-                          <span className="text-xs text-slate-500">
-                            {groupCoveredMonths}/{groupTotalMonths} mo across categories
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-
-                    {!isCollapsed && groupCats.map(a => {
-                      const cat = categories.find(c => c.id === a.categoryId);
-                      const effectiveTarget = getEffectiveTarget(a);
-                      const coverage = coverageMap[a.categoryId];
-
-                      return (
-                        <tr
-                          key={a.categoryId}
-                          className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer"
-                          onClick={() => cat && onSelectCategory(cat)}
+      <div className="tablebox">
+        <table>
+          <thead>
+            <tr>
+              {[
+                "Group / category",
+                "Monthly need",
+                "Current / mo",
+                "Discrepancy",
+                "Proposed / mo",
+                "Recommendation",
+                "Plan as",
+              ].map((label) => (
+                <th scope="col" key={label}>
+                  {label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {listed.map(({ g, active, shown }) => {
+              const t = groupTotals(active),
+                expanded = (filtering && autoOpen) || opened.has(g.id),
+                eligible = active.filter(
+                  (c) => plans[c.id].recommendation !== null,
+                ),
+                done = eligible.every(
+                  (c) => plans[c.id].recommendation === plans[c.id].proposed,
+                );
+              return (
+                <Fragment key={g.id}>
+                  <tr className="group">
+                    <td>
+                      <button
+                        className="groupbutton"
+                        onClick={() => toggle(g.id)}
+                        aria-expanded={expanded}
+                        aria-label={`Toggle ${g.name}`}
+                      >
+                        <span className="chevron">{expanded ? "▾" : "▸"}</span>
+                        <span>
+                          {g.name}{" "}
+                          <span className="groupmeta">{active.length}</span>
+                        </span>
+                      </button>
+                    </td>
+                    <td>{t.need === null ? "Review" : money(t.need)}</td>
+                    <td>{t.current === null ? "Not set" : money(t.current)}</td>
+                    <td>
+                      {t.current === null || t.need === null
+                        ? "—"
+                        : money(t.current - t.need)}
+                    </td>
+                    <td>
+                      {t.proposed === null ? "Incomplete" : money(t.proposed)}
+                    </td>
+                    <td>
+                      {eligible.length ? (
+                        <button
+                          className="apply"
+                          disabled={done}
+                          aria-label={`Apply recommendations for ${g.name}`}
+                          title="Applies to all ongoing categories in this group, including those hidden by filters"
+                          onClick={() => apply(active)}
                         >
-                          <td className="py-2 px-4 pl-10 text-slate-700 sticky left-0 bg-white">
-                            <div className="flex items-center gap-2">
-                              <span>{a.categoryName}</span>
-                              {cat?.ynabTarget !== null && cat?.ynabTarget !== undefined && cat.ynabTarget > 0 && !overrides[a.categoryId]?.target && (
-                                <span className="text-[10px] text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded font-medium">YNAB</span>
-                              )}
-                            </div>
+                          {done ? "Applied" : "Use suggestions"}
+                        </button>
+                      ) : (
+                        <span className="pending">Review inputs</span>
+                      )}
+                    </td>
+                    <td>
+                      {planAs(
+                        expenseCategories.filter((c) => c.groupId === g.id),
+                        g.name,
+                      )}
+                    </td>
+                  </tr>
+                  {expanded &&
+                    shown.map((c) => {
+                      const p = plans[c.id],
+                        k = kind(p);
+                      return (
+                        <tr key={c.id} className="category">
+                          <td>
+                            <button
+                              className="category-name"
+                              onClick={() => onSelectCategory(c)}
+                            >
+                              {c.name}
+                            </button>
+                            <span
+                              className={`purpose ${p.type}`}
+                              title="Open category to change its purpose"
+                            >
+                              {p.type === "annual"
+                                ? "Annual"
+                                : p.type === "irregular"
+                                  ? "Irregular"
+                                  : p.type === "savings"
+                                    ? "Savings"
+                                    : "Monthly"}
+                            </span>
                           </td>
-                          <ValueCell
-                            value={effectiveTarget}
-                            onSave={(val) => handleTargetSave(a.categoryId, val)}
-                            colorClass="text-emerald-700"
-                            bgClass="bg-emerald-50/30"
-                          />
-                          <SpendingRange analysis={a} />
-                          {coverage ? (
-                            <CoverageBadge coverage={coverage} />
-                          ) : (
-                            <td className="py-2 px-3 text-slate-400">—</td>
-                          )}
+                          <td>
+                            {p.need === null ? "Review" : money(p.need)}
+                            <small className="method">{p.method}</small>
+                          </td>
+                          <td>
+                            {p.current === null ? (
+                              <button
+                                className="category-name inline-setup"
+                                onClick={() => onSelectCategory(c)}
+                              >
+                                Not set
+                              </button>
+                            ) : (
+                              money(p.current)
+                            )}
+                          </td>
+                          <td
+                            className={
+                              k === "need"
+                                ? "short"
+                                : k === "room"
+                                  ? "positive"
+                                  : ""
+                            }
+                          >
+                            {p.discrepancy === null
+                              ? "—"
+                              : `${p.discrepancy > 0 ? "+" : ""}${money(p.discrepancy)}`}
+                          </td>
+                          <td>
+                            <span aria-hidden="true">$ </span>
+                            <AmountInput
+                              className="target"
+                              value={p.proposed}
+                              label={`Proposed monthly contribution for ${c.name}`}
+                              onCommit={(n) =>
+                                n !== null && onSetOverride(c.id, { target: n })
+                              }
+                            />
+                          </td>
+                          <td>{applyButton(c)}</td>
+                          <td>{planAs([c], c.name)}</td>
                         </tr>
                       );
                     })}
-                  </React.Fragment>
+                </Fragment>
+              );
+            })}
+            {!listed.length && (
+              <tr>
+                <td colSpan={7} style={{ textAlign: "center", padding: 25 }}>
+                  No ongoing categories match. Check One-Off below or change
+                  your search.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <p className="caption">
+        Monthly need uses the category’s purpose. Discrepancy = current
+        contribution − monthly need. Positive amounts warrant review; annual
+        obligations and reserves still need funding. Group totals include
+        categories hidden by filters.
+      </p>
+      <section className="oneoff-section">
+        <div className="oneoff-heading">
+          <div>
+            <div className="eyebrow">Life happens</div>
+            <h2>One-Off</h2>
+            <p>
+              Different big expenses each year. One shared reserve for the
+              unknown.
+            </p>
+          </div>
+          <div className="reserve">
+            <label>Choose your yearly reserve</label>
+            <div>
+              <span>$ </span>
+              <AmountInput
+                value={annualReserve}
+                label="Choose your yearly reserve"
+                onCommit={(n) => n !== null && onReserveChange(n)}
+              />
+              <span className="reserve-arrow">→</span>
+              <strong>{money(annualReserve / 12)}/month</strong>
+            </div>
+            <small>
+              Included once in your monthly plan · saved steadily year-round
+            </small>
+          </div>
+        </div>
+        <p className="off-caption">
+          {oneOff.length} historical categories · excluded from ongoing targets
+        </p>
+        <div className="off-table">
+          <table>
+            <thead>
+              <tr>
+                {[
+                  "Original group / category",
+                  "Recorded spending",
+                  "Ongoing allocation",
+                  "Plan as",
+                ].map((label) => (
+                  <th scope="col" key={label}>
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {expenseGroups.map((g) => {
+                const cs = oneOff.filter((c) => c.groupId === g.id),
+                  shown = cs.filter((c) =>
+                    (c.name + " " + g.name)
+                      .toLowerCase()
+                      .includes(query.trim().toLowerCase()),
+                  );
+                if (!shown.length) return null;
+                const expanded = offOpened.has(g.id) || query.trim() !== "";
+                return (
+                  <Fragment key={g.id}>
+                    <tr className="group">
+                      <td>
+                        <button
+                          className="groupbutton"
+                          onClick={() => toggle(g.id, true)}
+                          aria-expanded={expanded}
+                          aria-label={`Toggle one-off ${g.name}`}
+                        >
+                          <span className="chevron">
+                            {expanded ? "▾" : "▸"}
+                          </span>
+                          {g.name}{" "}
+                          <span className="groupmeta">{cs.length}</span>
+                        </button>
+                      </td>
+                      <td>
+                        {money(
+                          cs.reduce((s, c) => s + plans[c.id].rawTotal, 0),
+                        )}
+                      </td>
+                      <td>No repeat allocation</td>
+                      <td>
+                        {planAs(
+                          expenseCategories.filter((c) => c.groupId === g.id),
+                          g.name,
+                        )}
+                      </td>
+                    </tr>
+                    {expanded &&
+                      shown.map((c) => (
+                        <tr key={c.id} className="category">
+                          <td>
+                            <button
+                              className="category-name"
+                              onClick={() => onSelectCategory(c)}
+                            >
+                              {c.name}
+                            </button>
+                            {c.hidden && (
+                              <small>
+                                Hidden in YNAB · review classification
+                              </small>
+                            )}
+                          </td>
+                          <td>{money(plans[c.id].rawTotal)}</td>
+                          <td>Excluded</td>
+                          <td>{planAs([c], c.name)}</td>
+                        </tr>
+                      ))}
+                  </Fragment>
                 );
               })}
-
-              <tr className="bg-slate-800 text-white font-semibold">
-                <td className="py-3 px-4 sticky left-0 bg-slate-800">Total Monthly Budget</td>
-                <td className="py-3 px-2 text-right text-emerald-300">
-                  {formatCurrency(totalTarget)}
-                </td>
-                <td className="py-3 px-3"></td>
-                <td className="py-3 px-3"></td>
-              </tr>
+              {!oneOff.some((c) =>
+                (
+                  c.name +
+                  " " +
+                  (groups.find((g) => g.id === c.groupId)?.name || "")
+                )
+                  .toLowerCase()
+                  .includes(query.trim().toLowerCase()),
+              ) && (
+                <tr>
+                  <td colSpan={4} style={{ padding: 18, textAlign: "center" }}>
+                    Mark a category or group as One-off above to keep it out of
+                    ongoing targets.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
-      </div>
-
-      <div className="bg-slate-50 rounded-lg border border-slate-200 p-4">
-        <p className="text-xs text-slate-500 leading-relaxed">
-          <strong>How this works:</strong> Targets are pulled from your YNAB budget goals. If no goal is set,
-          a recommended target is calculated from your spending history. The <strong>Coverage</strong> column
-          simulates your target against your actual spending — it shows how many months your target would have
-          covered, accounting for rollover from underspending months. Click any target to edit it.
-          Click a category row to see detailed monthly spending.
+        <p className="caption">
+          These past events don’t get repeated monthly targets. The reserve is
+          your choice—not a prediction from one unusual year. Recorded spending
+          covers the loaded completed months; older expenses may be outside that
+          window.
         </p>
+      </section>
+      <div className="footer">
+        <div>
+          <strong>
+            {totals.missingTargets
+              ? `Set ${totals.missingTargets} missing targets to check this plan.`
+              : takeHome === null
+                ? "Enter income to check your plan."
+                : over
+                  ? `Reduce this plan by ${money(Math.abs(left!))} to fit your income.`
+                  : `Your proposed plan fits, with ${money(left!)} left.`}
+          </strong>
+          <p>Try changes here. Your YNAB budget stays unchanged.</p>
+        </div>
+        <button
+          className="quiet"
+          onClick={() => {
+            onReset();
+            setNotice(
+              "Proposed targets reset. Your category purposes, exclusions and reserve are preserved.",
+            );
+          }}
+        >
+          Reset proposed targets
+        </button>
       </div>
-    </div>
+      <p className="caption" role="status" aria-live="polite">
+        {notice}
+      </p>
+      <p className="caption">
+        Click a category name for details. Your plan is saved in this browser
+        for the selected budget.
+      </p>
+    </>
   );
 }
