@@ -6,11 +6,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 import json
 import os
+from urllib.parse import unquote
 from playwright.sync_api import sync_playwright, expect
 
 ARTIFACTS = Path(os.environ.get('SCREENSHOT_DIR', '/tmp/budget-clarity-screenshots'))
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
-BASE = os.environ.get('APP_URL', 'http://127.0.0.1:5000')
+BASE = os.environ.get('APP_URL', 'http://127.0.0.1:5000').rstrip('/') + '/tests/browser-harness.html'
 MONTHS = ['2026-07-01', '2026-08-01', '2026-09-01']
 GROUPS = [{'id': 'g1', 'name': 'Everyday', 'hidden': False, 'deleted': False}]
 CATEGORIES = [
@@ -51,7 +52,8 @@ with sync_playwright() as p:
     context = browser.new_context(viewport={'width': 1440, 'height': 1250}, accept_downloads=True)
     page = context.new_page()
     page.clock.install(time=datetime(2026, 10, 30, 12, tzinfo=timezone.utc))
-    errors, writes = [], []
+    errors, writes, cloud_writes = [], [], []
+    cloud_records = {}
     page.on('pageerror', lambda e: errors.append(str(e)))
 
     def api(route):
@@ -78,6 +80,23 @@ with sync_playwright() as p:
         else: raise AssertionError(path)
         route.fulfill(json={'data': result})
     page.route('https://api.ynab.com/v1/**', api)
+    def cloud_api(route):
+        request = route.request
+        budget_id = unquote(request.url.split('/api/preferences/', 1)[1].split('?', 1)[0])
+        if request.method == 'GET':
+            route.fulfill(json=cloud_records.get(budget_id, {'settings': None, 'revision': None}))
+            return
+        cloud_writes.append(budget_id)
+        payload = json.loads(request.post_data or '{}')
+        current = cloud_records.get(budget_id)
+        expected = payload.get('expectedRevision')
+        if (current is None and expected is not None) or (current is not None and expected != current['revision']):
+            route.fulfill(status=409, json=current or {'settings': None, 'revision': None, 'error': 'Revision conflict'})
+            return
+        record = {'settings': payload['settings'], 'revision': 1 if current is None else current['revision'] + 1}
+        cloud_records[budget_id] = record
+        route.fulfill(json=record)
+    page.route('**/api/preferences/**', cloud_api)
     page.add_init_script("""if(!sessionStorage.getItem('fixture-seeded')){
       localStorage.setItem('ynab_api_token','fictional-test-token');
       localStorage.setItem('ynab_selected_budget','mock-budget');
@@ -134,6 +153,7 @@ with sync_playwright() as p:
     assert '$40.00' in page.locator('.reimb-summary').inner_text()
 
     # Matches persist across reloads, and a backup can be exported.
+    expect(page.locator('.sync-status')).to_have_text('Saved to your account')
     page.reload()
     page.get_by_role('button', name='Reimbursements $125 owed', exact=True).click()
     expect(page.locator('#reimb-owed')).to_have_text('$125.00')
@@ -158,7 +178,7 @@ with sync_playwright() as p:
     expect(page.locator('#reimb-owed')).to_have_text('$273.90')
     page.once('dialog', lambda d: d.accept())
     page.locator('input[type=file]').set_input_files(download.value.path())
-    expect(page.get_by_role('status')).to_have_text('Backup restored.')
+    expect(page.locator('.reimb-note[role="status"]')).to_have_text('Backup restored.')
 
     page.set_viewport_size({'width': 390, 'height': 844})
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')

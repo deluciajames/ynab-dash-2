@@ -1,0 +1,1 @@
+- [Budget data privacy](budget-data-privacy.md) — sync settings per account and budget; keep YNAB credentials and full history in the browser.

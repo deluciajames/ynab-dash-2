@@ -145,6 +145,10 @@ export function useBudgetPlan(budgetId: string | null) {
     (incomeInput: string) => update((old) => ({ ...old, incomeInput })),
     [update],
   );
+  const replaceSettings = useCallback(
+    (settings: Settings) => setState({ budgetId, settings }),
+    [budgetId],
+  );
   const resetTargets = useCallback(
     () =>
       update((old) => ({
@@ -170,6 +174,7 @@ export function useBudgetPlan(budgetId: string | null) {
     setOverrides,
     setAnnualReserve,
     setIncomeInput,
+    replaceSettings,
     resetTargets,
     storageError,
   };

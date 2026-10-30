@@ -80,6 +80,11 @@ export function useReimbursements(
     },
     [budgetId],
   );
+  const replaceStore = useCallback(
+    (next: ReimbursementStore) =>
+      update(() => sanitizeStore(next) ?? emptyStore()),
+    [update],
+  );
 
   const tracked = store.categoryIds
     ? store.categoryIds.flatMap((id) => categories.filter((c) => c.id === id))
@@ -239,6 +244,7 @@ export function useReimbursements(
             }
           : old,
       ),
+    replaceStore,
     exportData: () => ({
       kind: "budget-clarity-reimbursements",
       exportedAt: new Date().toISOString(),
@@ -252,7 +258,7 @@ export function useReimbursements(
           ? sanitizeStore(v.data)
           : null;
       if (!next) return "That file is not a reimbursement backup.";
-      update(() => next);
+      replaceStore(next);
       return null;
     },
   };

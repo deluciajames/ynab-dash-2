@@ -1782,3 +1782,128 @@ dialog {
     display: none;
   }
 }
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+}
+.auth-card {
+  width: min(620px, 100%);
+  padding: 54px 42px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: white;
+  text-align: center;
+}
+.auth-card h1 {
+  font-size: clamp(27px, 5vw, 36px);
+  margin: 12px 0;
+}
+.auth-card p {
+  margin: 14px 0;
+}
+.auth-logo {
+  display: block;
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 24px;
+}
+.auth-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 28px;
+}
+.auth-primary,
+.auth-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 9px 16px;
+  border: 1px solid var(--green);
+  border-radius: 9px;
+  color: var(--green);
+  font-weight: 650;
+  text-decoration: none;
+}
+.auth-primary {
+  background: var(--green);
+  color: white;
+}
+.auth-primary:hover {
+  background: #185742;
+}
+.auth-secondary:hover {
+  background: #f5f8f5;
+}
+.auth-note {
+  font-size: 13px;
+}
+.sync-status {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.sync-status.error {
+  color: #a13c29;
+}
+.sync-status.pending {
+  color: #72551c;
+}
+.sync-status.conflict {
+  color: #72551c;
+}
+.sync-conflict-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgb(17 28 24 / 45%);
+}
+.sync-conflict {
+  width: min(520px, 100%);
+  padding: 26px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: white;
+  box-shadow: 0 18px 60px rgb(20 35 28 / 18%);
+}
+.sync-conflict h2 {
+  margin: 8px 0 12px;
+}
+.sync-conflict-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+.sync-conflict-actions .primary {
+  border: 1px solid var(--green);
+  border-radius: 9px;
+  padding: 9px 13px;
+  background: var(--green);
+  color: white;
+}
+@media (max-width: 760px) {
+  .auth-card {
+    padding: 40px 22px;
+  }
+  .sync-status {
+    display: none;
+  }
+  .sync-conflict-actions {
+    flex-direction: column;
+  }
+  .sync-conflict-actions button {
+    width: 100%;
+  }
+}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, RefreshCw, ArrowUpDown } from "lucide-react";
+import { UserButton } from "@clerk/react";
 import { ApiKeyDialog } from "./components/ApiKeyDialog";
 import { BudgetSelector } from "./components/BudgetSelector";
 import { TargetCalculator } from "./components/TargetCalculator";
@@ -19,6 +20,8 @@ import { money } from "./lib/money";
 import { fetchAllMonthDetails, fetchCategoriesWithGoals } from "./api/ynab";
 import { transformYnabData } from "./api/transform";
 import { planCategory, totalPlan } from "./api/planning";
+import type { CloudBudgetPreferences } from "./api/preferences";
+import { useCloudPreferences } from "./hooks/useCloudPreferences";
 
 type BudgetData = ReturnType<typeof transformYnabData>;
 const emptyData = (): BudgetData => ({
@@ -26,7 +29,13 @@ const emptyData = (): BudgetData => ({
   groups: [],
   availableMonths: [],
 });
-function App() {
+function App({
+  userId,
+  showAccountButton = true,
+}: {
+  userId: string;
+  showAccountButton?: boolean;
+}) {
   const { apiKey, setApiKey, clearApiKey } = useApiKey(),
     { budgetId, setBudgetId, clearBudgetId } = useBudgetId();
   const { loadCached, saveData, clearData } = useCachedBudgetData();
@@ -132,6 +141,39 @@ function App() {
     expenses,
     refreshKey,
   );
+  const cloudSettings = useMemo<CloudBudgetPreferences>(
+    () => ({
+      version: 1,
+      plan: {
+        overrides: settings.overrides,
+        annualReserve: settings.annualReserve,
+        incomeInput: settings.incomeInput,
+      },
+      sortOrder,
+      reimbursements: reimbursements.store,
+    }),
+    [
+      settings.overrides,
+      settings.annualReserve,
+      settings.incomeInput,
+      sortOrder,
+      reimbursements.store,
+    ],
+  );
+  const applyCloudSettings = useCallback(
+    (saved: CloudBudgetPreferences) => {
+      settings.replaceSettings(saved.plan);
+      setSortOrder(saved.sortOrder);
+      reimbursements.replaceStore(saved.reimbursements);
+    },
+    [settings.replaceSettings, setSortOrder, reimbursements.replaceStore],
+  );
+  const cloud = useCloudPreferences(
+    userId,
+    budgetId,
+    cloudSettings,
+    applyCloudSettings,
+  );
   const owed = reimbursements.loaded ? reimbursements.ledger.totals.owed : 0;
   return (
     <div className="budget-app">
@@ -196,9 +238,33 @@ function App() {
             onConnect={setApiKey}
             onDisconnect={disconnect}
           />
+          {cloud.status !== "idle" && (
+            <span className={`sync-status ${cloud.status}`} role="status">
+              {cloud.status === "loading"
+                ? "Loading saved settings…"
+                : cloud.status === "pending"
+                  ? "Changes not saved yet"
+                : cloud.status === "saving"
+                  ? "Saving…"
+                  : cloud.status === "saved"
+                    ? "Saved to your account"
+                    : cloud.status === "conflict"
+                      ? "Settings need review"
+                      : "Sync needs attention"}
+            </span>
+          )}
+          {showAccountButton && <UserButton />}
         </div>
       </header>
       <main>
+        {cloud.status === "error" && (
+          <div className="storage-warning" role="alert">
+            {cloud.message} Your latest changes remain in this browser.{" "}
+            <button className="quiet" onClick={cloud.retry}>
+              Retry sync
+            </button>
+          </div>
+        )}
         {!apiKey && (
           <section className="empty-state">
             <div className="eyebrow">Your monthly plan</div>
@@ -208,8 +274,8 @@ function App() {
               bills, and make room for what matters.
             </p>
             <p>
-              Use “Connect to YNAB” above to enter your personal access token.
-              Your plan stays in this browser; it does not change YNAB.
+              Your planning choices sync to your account and never change
+              YNAB. Your YNAB token stays in this browser.
             </p>
           </section>
         )}
@@ -325,6 +391,35 @@ function App() {
           }
           onClose={() => setSelected(null)}
         />
+      )}
+      {cloud.status === "conflict" && (
+        <div className="sync-conflict-backdrop" role="presentation">
+          <section
+            aria-labelledby="sync-conflict-title"
+            aria-modal="true"
+            className="sync-conflict"
+            role="dialog"
+          >
+            <div className="eyebrow">Saved settings</div>
+            <h2 id="sync-conflict-title">Choose which copy to keep</h2>
+            <p>{cloud.message}</p>
+            <p>
+              Choose which copy should take precedence. The selected copy will
+              replace the other for these saved preferences.
+            </p>
+            <div className="sync-conflict-actions">
+              <button className="quiet" onClick={cloud.useAccountCopy}>
+                Use account settings
+              </button>
+              <button
+                className="primary"
+                onClick={() => void cloud.keepThisBrowserCopy()}
+              >
+                Keep this browser’s settings
+              </button>
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );

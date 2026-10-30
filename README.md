@@ -13,7 +13,9 @@ Connect to YNAB with your personal access token, then select a budget. Groups st
 - **Savings goals** use a chosen contribution, rather than their spending activity.
 - **One-Off** categories keep their history but have no recurring allocation. A separate yearly reserve is included once in the monthly plan.
 
-Recommendations, target edits, category purposes, exclusion reasons, income and reserves are saved **per budget in your browser**. They never update YNAB. Opening another browser or clearing its storage does not carry these settings over. Resetting your plan returns it to your YNAB targets and preserves purposes, exclusions, income and reserves.
+After you sign in, category purposes, target edits, exclusions, income, reserves, group order, and reimbursement matches are saved **per budget in your account** and sync across sessions and browsers. On the first sign-in, existing browser settings are imported when the account has no saved copy. If both copies contain different choices, the app asks which one to keep. These settings never update YNAB. Resetting your plan returns it to your YNAB targets and preserves purposes, exclusions, income and reserves.
+
+On a new browser, sign in, enter your YNAB token again, and select the same budget; the saved plan settings will then load from your account. The token itself is not synced.
 
 A category with no YNAB target or entered contribution counts as $0, so totals always calculate; it shows “$0 · not set” so a blank is easy to tell from a real $0. Exclusions affect monthly planning only: actual historical spending and chart bars stay visible. At least one observed month must remain included. Annual and irregular calculations use expected-cost inputs, so their bill months are not removed from funding calculations.
 
@@ -27,7 +29,7 @@ YNAB target cadence, current goal metadata and the order of groups and categorie
 
 Split parts take their payee, and their memo when they have none, from the parent transaction (one extra request when needed).
 
-Matches and ignores are saved **per budget in this browser** and never change YNAB. They are keyed to YNAB transaction ids, so refreshing keeps them. Use **Export backup** and **Import backup** to keep a copy or move to another browser. If a matched transaction leaves the category or changes amount, the page asks you to keep the rest of the match or undo it; until then its amounts count as open. Ignored items that you recategorize in YNAB simply disappear. If a split is edited and its reimbursed part gets a new id, a single part with the same parent and amount takes over the match.
+Matches and ignores are saved **per budget in your account** and never change YNAB. Their transaction references and the small snapshots needed to restore those decisions are saved; your YNAB token and full fetched transaction history stay in the browser. Use **Export backup** and **Import backup** to keep an extra copy. If a matched transaction leaves the category or changes amount, the page asks you to keep the rest of the match or undo it; until then its amounts count as open. Ignored items that you recategorize in YNAB simply disappear. If a split is edited and its reimbursed part gets a new id, a single part with the same parent and amount takes over the match.
 
 ## Development and deployment
 
@@ -35,10 +37,11 @@ Use Node 22.6+ and npm:
 
 ```sh
 npm ci
+npm run db:push
 npm run dev
 ```
 
-The development server uses port 5000. For a Vercel deployment, select Vite, run `npm run build`, and publish the `dist` output. The app requires no database or server-side credentials. The user's browser connects directly to YNAB.
+The Replit app uses port 5000 and runs the Express API with Vite in development. `npm run db:push` applies the schema to the development database. It uses Replit-managed Clerk sign-in and PostgreSQL for private saved preferences. The browser connects directly to YNAB; the server never receives the YNAB token or full fetched history.
 
 ```sh
 npm test
@@ -47,7 +50,7 @@ npm run build -- --outDir /tmp/budget-clarity-build
 
 The external output directory avoids modifying the repository's previously tracked `dist` files during development. CI runs the calculation tests and production build.
 
-Browser integration checks use fictional YNAB responses and no real token. With Python Playwright and Chromium installed, start the dev server and run:
+Browser integration checks use a development-only harness, mocked settings storage, and fictional YNAB responses; they do not use a real token or Clerk account. With Python Playwright and Chromium installed, start the dev server and run:
 
 ```sh
 python tests/browser_smoke.py
@@ -55,6 +58,8 @@ python tests/reimbursements_smoke.py
 ```
 
 `APP_URL`, `CHROMIUM_PATH`, and `SCREENSHOT_DIR` can override the server address, browser executable, and screenshot location. The checks exercise 103 categories, persistence and budget isolation, annual funding, recommendation actions, month exclusions, one-off classifications, income warnings, reports, mobile layouts, and dialog keyboard access. They also compare core visual styles with [the approved design reference](docs/approved-design.html).
+
+For Replit production, publish the app after the development database schema is present. Replit applies managed PostgreSQL schema changes during Publish. The development and production Clerk accounts are separate; create an account in the environment you use.
 
 ## Design reference
 

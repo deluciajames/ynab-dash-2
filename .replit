@@ -1,7 +1,7 @@
-modules = ["web", "python-3.12", "nodejs-22"]
+modules = ["web", "python-3.12", "nodejs-22", "postgresql-16"]
 [nix]
 channel = "stable-25_05"
-packages = ["unzip"]
+packages = ["gitFull", "playwright-driver", "unzip"]
 
 [agent]
 expertMode = true

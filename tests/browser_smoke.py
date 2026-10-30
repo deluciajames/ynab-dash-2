@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import json
 import os
+from urllib.parse import unquote
 from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,7 +14,7 @@ DATA = json.loads((ROOT / 'tests/fixtures/budget.json').read_text())
 MONTHS = [f'{2025 if i < 3 else 2026}-{(i+9)%12+1:02}-01' for i in range(12)]
 ARTIFACTS = Path(os.environ.get('SCREENSHOT_DIR', '/tmp/budget-clarity-screenshots'))
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
-BASE = os.environ.get('APP_URL', 'http://127.0.0.1:5000')
+BASE = os.environ.get('APP_URL', 'http://127.0.0.1:5000').rstrip('/') + '/tests/browser-harness.html'
 settings = {'incomeInput': '12000', 'annualReserve': 6000, 'overrides': {}}
 metadata = []
 for c in DATA['categories']:
@@ -32,6 +33,8 @@ with sync_playwright() as p:
     page.clock.install(time=datetime(2026,10,2,12,tzinfo=timezone.utc))
     errors=[]
     writes=[]
+    cloud_writes=[]
+    cloud_records={}
     page.on('pageerror',lambda e:errors.append(str(e)))
     def api(route):
         request=route.request
@@ -51,6 +54,23 @@ with sync_playwright() as p:
         else: raise AssertionError(path)
         route.fulfill(json={'data':result})
     page.route('https://api.ynab.com/v1/**',api)
+    def cloud_api(route):
+        request=route.request
+        budget_id=unquote(request.url.split('/api/preferences/',1)[1].split('?',1)[0])
+        if request.method == 'GET':
+            route.fulfill(json=cloud_records.get(budget_id,{'settings':None,'revision':None}))
+            return
+        cloud_writes.append(budget_id)
+        payload=json.loads(request.post_data or '{}')
+        current=cloud_records.get(budget_id)
+        expected=payload.get('expectedRevision')
+        if (current is None and expected is not None) or (current is not None and expected != current['revision']):
+            route.fulfill(status=409,json=current or {'settings':None,'revision':None,'error':'Revision conflict'})
+            return
+        record={'settings':payload['settings'],'revision':1 if current is None else current['revision']+1}
+        cloud_records[budget_id]=record
+        route.fulfill(json=record)
+    page.route('**/api/preferences/**',cloud_api)
     seed=json.dumps(settings)
     page.add_init_script(f"""if(!sessionStorage.getItem('fixture-seeded')){{
       localStorage.setItem('ynab_api_token','fictional-test-token');
@@ -61,6 +81,10 @@ with sync_playwright() as p:
     page.goto(BASE,wait_until='networkidle')
     expect(page.locator('#total')).to_have_text('$11,325')
     expect(page.locator('#remaining')).to_have_text('$675')
+    expect(page.locator('.sync-status')).to_have_text('Saved to your account')
+    stable_write_count=len(cloud_writes)
+    page.wait_for_timeout(1200)
+    assert len(cloud_writes)==stable_write_count,(stable_write_count,cloud_writes)
     assert page.locator('.tablebox tr.group').count()==10
     assert page.locator('.group-alert').count()==0
     reference = browser.new_page(viewport={'width':1440,'height':1250})
@@ -95,6 +119,7 @@ with sync_playwright() as p:
     page.locator('dialog').get_by_role('button',name='Apply recommendation for Groceries',exact=True).click()
     expect(page.locator('#total')).to_have_text('$11,275')
     page.get_by_role('button',name='Close',exact=True).click()
+    expect(page.locator('.sync-status')).to_have_text('Saved to your account')
     page.reload(wait_until='networkidle')
     expect(page.locator('#total')).to_have_text('$11,275')
     page.get_by_role('button',name='Toggle Food & dining',exact=True).click()
@@ -125,6 +150,7 @@ with sync_playwright() as p:
     page.locator('#income').fill('10000')
     expect(page.locator('#remaining')).to_have_text('$1,825')
     assert 'Over your income' in page.locator('.summary').inner_text()
+    expect(page.locator('.sync-status')).to_have_text('Saved to your account')
     page.get_by_role('button',name='Reports',exact=True).click()
     assert 'unfunded amount' in page.locator('.report-warning').inner_text()
     page.get_by_role('button',name='Budget',exact=True).click()
