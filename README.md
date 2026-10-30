@@ -25,6 +25,8 @@ YNAB target cadence and current goal metadata come from the current categories e
 
 **Reimbursements** lists every transaction in your “Getting Reimbursed” category (found by name; you can choose another) since the tracking start date, which defaults to the first of the month four months back. Split purchases appear as just their reimbursed part. Tick money out and the money in that paid it back, then **Mark as reimbursed**. One payment can cover several items, and several payments can cover one item; edit the proposed amounts before saving, and anything left over stays open. **Ignore** writes off what is still open on an item (listed under Given away, with an optional note). Inflows from Venmo, Zelle, PayPal and similar are labelled payments; others are labelled refunds or credits.
 
+Split parts take their payee, and their memo when they have none, from the parent transaction (one extra request when needed).
+
 Matches and ignores are saved **per budget in this browser** and never change YNAB. They are keyed to YNAB transaction ids, so refreshing keeps them. Use **Export backup** and **Import backup** to keep a copy or move to another browser. If a matched transaction leaves the category or changes amount, the page asks you to keep the rest of the match or undo it; until then its amounts count as open. Ignored items that you recategorize in YNAB simply disappear. If a split is edited and its reimbursed part gets a new id, a single part with the same parent and amount takes over the match.
 
 ## Development and deployment

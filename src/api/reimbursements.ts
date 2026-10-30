@@ -1,4 +1,4 @@
-import type { YnabHybridTransaction } from "./ynab";
+import type { YnabHybridTransaction, YnabTransactionSummary } from "./ynab";
 
 // All amounts here are whole cents, so allocations add up exactly.
 export interface ReimbursementTx {
@@ -53,6 +53,35 @@ export const emptyStore = (today = new Date()): ReimbursementStore => ({
   matches: [],
   ignored: {},
 });
+
+/** Split parts with no payee of their own. */
+export const needsParentDetails = (transactions: YnabHybridTransaction[]) =>
+  transactions.some(
+    (t) => !t.deleted && t.parent_transaction_id && !t.payee_name,
+  );
+
+/**
+ * YNAB leaves the payee (and often the memo) on the parent of a split, so
+ * split parts take them from the parent when they have none of their own.
+ */
+export function withParentDetails(
+  transactions: YnabHybridTransaction[],
+  parents: YnabTransactionSummary[],
+): YnabHybridTransaction[] {
+  const byId = new Map(parents.map((p) => [p.id, p]));
+  return transactions.map((t) => {
+    const parent = t.parent_transaction_id
+      ? byId.get(t.parent_transaction_id)
+      : undefined;
+    return parent
+      ? {
+          ...t,
+          payee_name: t.payee_name || parent.payee_name,
+          memo: t.memo || parent.memo,
+        }
+      : t;
+  });
+}
 
 export function toReimbursementTxs(
   transactions: YnabHybridTransaction[],

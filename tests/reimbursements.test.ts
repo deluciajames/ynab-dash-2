@@ -10,8 +10,10 @@ import {
   reconcile,
   sanitizeStore,
   snapshot,
+  needsParentDetails,
   toReimbursementTxs,
   washSeries,
+  withParentDetails,
   type ReimbursementStore,
   type ReimbursementTx,
 } from "../src/api/reimbursements.ts";
@@ -246,4 +248,32 @@ test("sanitizes stored and imported data", () => {
   });
   assert.deepEqual(bad?.matches, []);
   assert.deepEqual(bad?.ignored, {});
+});
+
+test("split parts take the payee and memo from their parent", () => {
+  const parts = [
+    api("s1", "2026-10-13", -300, {
+      type: "subtransaction",
+      parent_transaction_id: "p9",
+      payee_name: null,
+    }),
+    api("s2", "2026-10-13", -20, {
+      type: "subtransaction",
+      parent_transaction_id: "p9",
+      payee_name: null,
+      memo: "holden's half",
+    }),
+    api("t1", "2026-10-21", -5.25, { payee_name: "Starbucks" }),
+  ];
+  assert.equal(needsParentDetails(parts), true);
+  assert.equal(needsParentDetails([parts[2]]), false);
+  const filled = toReimbursementTxs(
+    withParentDetails(parts, [
+      { id: "p9", payee_name: "Airbnb", memo: "#hawaii26 housing" },
+    ]),
+  );
+  assert.equal(tx(filled, "s1").payee, "Airbnb");
+  assert.equal(tx(filled, "s1").memo, "#hawaii26 housing");
+  assert.equal(tx(filled, "s2").memo, "holden's half");
+  assert.equal(tx(filled, "t1").payee, "Starbucks");
 });

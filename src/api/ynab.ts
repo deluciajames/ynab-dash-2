@@ -199,3 +199,21 @@ export async function fetchCategoryTransactions(
   );
   return data.transactions;
 }
+
+export interface YnabTransactionSummary {
+  id: string;
+  payee_name: string | null;
+  memo: string | null;
+}
+
+export async function fetchTransactionsSince(
+  token: string,
+  budgetId: string,
+  sinceDate: string,
+): Promise<YnabTransactionSummary[]> {
+  const data = await ynabFetch<{ transactions: YnabTransactionSummary[] }>(
+    `/budgets/${budgetId}/transactions?since_date=${sinceDate}`,
+    token,
+  );
+  return data.transactions;
+}

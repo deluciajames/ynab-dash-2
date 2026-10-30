@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fetchCategoryTransactions } from "../api/ynab";
+import {
+  fetchCategoryTransactions,
+  fetchTransactionsSince,
+} from "../api/ynab";
 import type { Category } from "../api/transform";
 import {
   buildLedger,
@@ -8,7 +11,9 @@ import {
   reconcile,
   sanitizeStore,
   snapshot,
+  needsParentDetails,
   toReimbursementTxs,
+  withParentDetails,
   washSeries,
   type ReimbursementStore,
   type ReimbursementTx,
@@ -87,6 +92,14 @@ export function useReimbursements(
     }
     setLoading(true);
     fetchCategoryTransactions(apiKey, budgetId, categoryId, store.startDate)
+      .then(async (list) =>
+        needsParentDetails(list)
+          ? withParentDetails(
+              list,
+              await fetchTransactionsSince(apiKey, budgetId, store.startDate),
+            )
+          : list,
+      )
       .then((list) => {
         if (generation.current !== version) return;
         setTxs({ key: fetchKey, list: toReimbursementTxs(list) });

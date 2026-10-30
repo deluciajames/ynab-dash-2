@@ -34,7 +34,8 @@ TRANSACTIONS = [
     tx('dinner', '2026-07-02', -250, 'Olive Garden', 'Covered dinner for 4'),
     tx('v1', '2026-07-05', 62.5, 'Venmo', 'dinner'),
     tx('v2', '2026-07-09', 62.5, 'Venmo', 'dinner'),
-    tx('groceries', '2026-10-19', -54.10, "Trader Joe's", 'Holden half', parent='p1'),
+    # As in YNAB, a split part has no payee; it comes from the parent.
+    tx('groceries', '2026-10-19', -54.10, None, None, parent='p1'),
     tx('gas', '2026-10-24', -32.30, 'Shell', 'Cabin trip'),
     tx('holden', '2026-10-26', 86.40, 'Venmo', 'tj + gas'),
     tx('return', '2026-09-03', 19.99, 'Amazon', 'Returned charger'),
@@ -67,6 +68,9 @@ with sync_playwright() as p:
         elif '/categories/reimb/transactions' in path:
             since.append(path.split('since_date=')[1])
             result = {'transactions': TRANSACTIONS, 'server_knowledge': 1}
+        elif path.startswith('/budgets/mock-budget/transactions?since_date='):
+            result = {'transactions': [{'id': 'p1', 'payee_name': "Trader Joe's", 'memo': 'Holden half'}],
+                      'server_knowledge': 1}
         else: raise AssertionError(path)
         route.fulfill(json={'data': result})
     page.route('https://api.ynab.com/v1/**', api)
@@ -84,6 +88,8 @@ with sync_playwright() as p:
     expect(page.get_by_role('combobox', name='Category')).to_have_value('reimb')
     assert 'Refund or credit' in page.locator('.reimb-side').inner_text()
     assert 'Split' in page.locator('.reimb-out').inner_text()
+    assert "Trader Joe's" in page.locator('.reimb-out').inner_text()
+    assert 'Holden half' in page.locator('.reimb-out').inner_text()
 
     # One Venmo pays back two items.
     page.get_by_role('checkbox', name="Select Trader Joe's on Oct 19, $54.10").check()
