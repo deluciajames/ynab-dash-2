@@ -21,6 +21,12 @@ The app loads up to 12 completed budget months, excluding the unfinished current
 
 YNAB target cadence and current goal metadata come from the current categories endpoint. Weekly targets use a yearly monthly equivalent (52/12); dated bills use the due-date funding calculation. Undated total-balance goals require a chosen monthly contribution. Funding credited by YNAB may include payments already made in the goal period; review it when planning a different future bill. Actual income is not auto-identified from category names: enter a confirmed take-home amount.
 
+## Reimbursement tracker
+
+**Reimbursements** lists every transaction in your “Getting Reimbursed” category (found by name; you can choose another) since the tracking start date, which defaults to the first of the month four months back. Split purchases appear as just their reimbursed part. Tick money out and the money in that paid it back, then **Mark as reimbursed**. One payment can cover several items, and several payments can cover one item; edit the proposed amounts before saving, and anything left over stays open. **Ignore** writes off what is still open on an item (listed under Given away, with an optional note). Inflows from Venmo, Zelle, PayPal and similar are labelled payments; others are labelled refunds or credits.
+
+Matches and ignores are saved **per budget in this browser** and never change YNAB. They are keyed to YNAB transaction ids, so refreshing keeps them. Use **Export backup** and **Import backup** to keep a copy or move to another browser. If a matched transaction leaves the category or changes amount, the page asks you to keep the rest of the match or undo it; until then its amounts count as open. Ignored items that you recategorize in YNAB simply disappear. If a split is edited and its reimbursed part gets a new id, a single part with the same parent and amount takes over the match.
+
 ## Development and deployment
 
 Use Node 22.6+ and npm:
@@ -43,6 +49,7 @@ Browser integration checks use fictional YNAB responses and no real token. With 
 
 ```sh
 python tests/browser_smoke.py
+python tests/reimbursements_smoke.py
 ```
 
 `APP_URL`, `CHROMIUM_PATH`, and `SCREENSHOT_DIR` can override the server address, browser executable, and screenshot location. The checks exercise 103 categories, persistence and budget isolation, annual funding, recommendation actions, month exclusions, one-off classifications, income warnings, reports, mobile layouts, and dialog keyboard access. They also compare core visual styles with [the approved design reference](docs/approved-design.html).
