@@ -16,16 +16,17 @@ GROUPS = [{'id': 'g1', 'name': 'Everyday', 'hidden': False, 'deleted': False}]
 CATEGORIES = [
     {'id': 'groceries', 'name': 'Groceries'},
     {'id': 'reimb', 'name': 'Getting Reimbursed'},
+    {'id': 'credits', 'name': 'Credit Card Credits (assign then transfer)'},
 ]
 META = [{**c, 'category_group_id': 'g1', 'category_group_name': 'Everyday', 'hidden': False, 'deleted': False,
          'budgeted': 0, 'activity': 0, 'balance': 0, 'goal_type': None, 'goal_target': None,
          'goal_cadence': None, 'goal_months_to_budget': None} for c in CATEGORIES]
 
 
-def tx(id, date, dollars, payee, memo=None, parent=None):
+def tx(id, date, dollars, payee, memo=None, parent=None, category='reimb'):
     return {'id': id, 'date': date, 'amount': round(dollars * 1000), 'memo': memo, 'cleared': 'cleared',
             'approved': True, 'flag_color': None, 'account_id': 'a', 'account_name': 'Checking',
-            'payee_id': None, 'payee_name': payee, 'category_id': 'reimb', 'transfer_account_id': None,
+            'payee_id': None, 'payee_name': payee, 'category_id': category, 'transfer_account_id': None,
             'deleted': False, 'type': 'subtransaction' if parent else 'transaction',
             'parent_transaction_id': parent}
 
@@ -41,6 +42,7 @@ TRANSACTIONS = [
     tx('return', '2026-09-03', 19.99, 'Amazon', 'Returned charger'),
     tx('gift', '2026-08-15', -40, 'Ticketmaster', 'Holden ticket'),
 ]
+CREDITS = [tx('amex', '2026-10-28', 50, 'Amex', 'Hotel statement credit', category='credits')]
 since = []
 
 with sync_playwright() as p:
@@ -68,6 +70,8 @@ with sync_playwright() as p:
         elif '/categories/reimb/transactions' in path:
             since.append(path.split('since_date=')[1])
             result = {'transactions': TRANSACTIONS, 'server_knowledge': 1}
+        elif '/categories/credits/transactions' in path:
+            result = {'transactions': CREDITS, 'server_knowledge': 1}
         elif path.startswith('/budgets/mock-budget/transactions?since_date='):
             result = {'transactions': [{'id': 'p1', 'payee_name': "Trader Joe's", 'memo': 'Holden half'}],
                       'server_knowledge': 1}
@@ -85,7 +89,15 @@ with sync_playwright() as p:
     page.get_by_role('button', name='Reimbursements $376 owed', exact=True).click()
     assert since[-1] == '2026-06-01', since
     expect(page.locator('#reimb-owed')).to_have_text('$376.40')
-    expect(page.get_by_role('combobox', name='Category')).to_have_value('reimb')
+    # Credit card credits are tracked alongside, found by name and labelled.
+    expect(page.locator('.reimb-cats summary')).to_have_text('Getting Reimbursed + Credit Card Credits')
+    expect(page.locator('.reimb-in', has_text='Amex')).to_contain_text('Credit Card Credits')
+    page.locator('.reimb-cats summary').click()
+    page.get_by_role('checkbox', name='Credit Card Credits (assign then transfer)').uncheck()
+    expect(page.locator('.reimb-in', has_text='Amex')).to_have_count(0)
+    page.get_by_role('checkbox', name='Credit Card Credits (assign then transfer)').check()
+    expect(page.locator('.reimb-in', has_text='Amex')).to_have_count(1)
+    page.locator('.reimb-cats summary').click()
     assert 'Refund or credit' in page.locator('.reimb-side').inner_text()
     assert 'Split' in page.locator('.reimb-out').inner_text()
     assert "Trader Joe's" in page.locator('.reimb-out').inner_text()

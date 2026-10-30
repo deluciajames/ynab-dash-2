@@ -48,7 +48,7 @@ function api(
 }
 const store = (change: Partial<ReimbursementStore> = {}): ReimbursementStore => ({
   ...emptyStore(today),
-  categoryId: "reimb",
+  categoryIds: ["reimb"],
   startDate: "2026-06-01",
   ...change,
 });
@@ -87,6 +87,7 @@ test("converts YNAB milliunits and labels inflows", () => {
   assert.equal(tx(txs, "groceries").amount, 5410);
   assert.equal(tx(txs, "groceries").direction, "out");
   assert.equal(tx(txs, "groceries").parentId, "p1");
+  assert.equal(tx(txs, "groceries").categoryId, "reimb");
   assert.equal(tx(txs, "holden").kind, "payment");
   assert.equal(tx(txs, "amazon").kind, "refund");
   assert.equal(defaultStartDate(today), "2026-06-01");
@@ -248,6 +249,11 @@ test("sanitizes stored and imported data", () => {
   });
   assert.deepEqual(bad?.matches, []);
   assert.deepEqual(bad?.ignored, {});
+  // Data saved when only one category could be tracked.
+  const legacy = { ...s, categoryId: "old" } as Record<string, unknown>;
+  delete legacy.categoryIds;
+  assert.deepEqual(sanitizeStore(legacy)?.categoryIds, ["old"]);
+  assert.equal(sanitizeStore({ ...legacy, categoryId: undefined })?.categoryIds, null);
 });
 
 test("split parts take the payee and memo from their parent", () => {

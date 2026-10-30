@@ -3,6 +3,7 @@ import type { YnabHybridTransaction, YnabTransactionSummary } from "./ynab";
 // All amounts here are whole cents, so allocations add up exactly.
 export interface ReimbursementTx {
   id: string;
+  categoryId: string | null;
   parentId: string | null;
   date: string;
   payee: string;
@@ -33,7 +34,8 @@ export interface IgnoreEntry {
 }
 export interface ReimbursementStore {
   version: 1;
-  categoryId: string | null;
+  /** Tracked categories; null until chosen, when they are guessed by name. */
+  categoryIds: string[] | null;
   startDate: string;
   matches: Match[];
   ignored: Record<string, IgnoreEntry>;
@@ -48,7 +50,7 @@ export function defaultStartDate(today = new Date()) {
 }
 export const emptyStore = (today = new Date()): ReimbursementStore => ({
   version: 1,
-  categoryId: null,
+  categoryIds: null,
   startDate: defaultStartDate(today),
   matches: [],
   ignored: {},
@@ -94,6 +96,7 @@ export function toReimbursementTxs(
         payee = t.payee_name || "(no payee)";
       return {
         id: t.id,
+        categoryId: t.category_id,
         parentId: t.parent_transaction_id ?? null,
         date: t.date,
         payee,
@@ -432,7 +435,8 @@ const isSnapshot = (s: unknown): s is TxSnapshot => {
 
 /** Validates stored or imported data; returns null if it is unusable. */
 export function sanitizeStore(value: unknown): ReimbursementStore | null {
-  const v = value as Partial<ReimbursementStore>;
+  const v = value as Partial<ReimbursementStore>,
+    legacy = value as { categoryId?: unknown };
   if (!v || typeof v !== "object" || v.version !== 1) return null;
   if (typeof v.startDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v.startDate))
     return null;
@@ -465,7 +469,12 @@ export function sanitizeStore(value: unknown): ReimbursementStore | null {
       };
   return {
     version: 1,
-    categoryId: typeof v.categoryId === "string" ? v.categoryId : null,
+    categoryIds: Array.isArray(v.categoryIds)
+      ? v.categoryIds.filter((id): id is string => typeof id === "string")
+      : // Saved before several categories could be tracked.
+        typeof legacy.categoryId === "string"
+        ? [legacy.categoryId]
+        : null,
     startDate: v.startDate,
     matches,
     ignored,

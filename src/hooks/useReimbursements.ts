@@ -31,9 +31,13 @@ function read(budgetId: string | null): ReimbursementStore {
     return emptyStore();
   }
 }
-export const guessCategory = (categories: Category[]) =>
-  categories.find((c) => /getting reimbursed/i.test(c.name)) ??
-  categories.find((c) => /reimburs/i.test(c.name));
+export function guessCategories(categories: Category[]) {
+  const reimbursed =
+    categories.find((c) => /getting reimbursed/i.test(c.name)) ??
+    categories.find((c) => /reimburs/i.test(c.name));
+  const credits = categories.filter((c) => /credit card credit/i.test(c.name));
+  return [reimbursed, ...credits].filter((c): c is Category => Boolean(c));
+}
 
 export function useReimbursements(
   apiKey: string | null,
@@ -77,29 +81,37 @@ export function useReimbursements(
     [budgetId],
   );
 
-  const category =
-    categories.find((c) => c.id === store.categoryId) ??
-    (store.categoryId ? undefined : guessCategory(categories));
-  const categoryId = category?.id ?? null;
-  const fetchKey = `${budgetId}|${categoryId}|${store.startDate}`;
+  const tracked = store.categoryIds
+    ? store.categoryIds.flatMap((id) => categories.filter((c) => c.id === id))
+    : guessCategories(categories);
+  const trackedIds = tracked.map((c) => c.id);
+  const fetchKey = `${budgetId}|${trackedIds.join(",")}|${store.startDate}`;
   const generation = useRef(0);
   useEffect(() => {
     const version = ++generation.current;
     setError("");
-    if (!apiKey || !budgetId || !categoryId) {
+    if (!apiKey || !budgetId || !trackedIds.length) {
       setLoading(false);
       return;
     }
     setLoading(true);
-    fetchCategoryTransactions(apiKey, budgetId, categoryId, store.startDate)
-      .then(async (list) =>
-        needsParentDetails(list)
+    Promise.all(
+      trackedIds.map((id) =>
+        fetchCategoryTransactions(apiKey, budgetId, id, store.startDate),
+      ),
+    )
+      .then(async (lists) => {
+        // Keep each transaction once, even if YNAB lists it twice.
+        const list = [
+          ...new Map(lists.flat().map((t) => [t.id, t])).values(),
+        ];
+        return needsParentDetails(list)
           ? withParentDetails(
               list,
               await fetchTransactionsSince(apiKey, budgetId, store.startDate),
             )
-          : list,
-      )
+          : list;
+      })
       .then((list) => {
         if (generation.current !== version) return;
         setTxs({ key: fetchKey, list: toReimbursementTxs(list) });
@@ -141,12 +153,12 @@ export function useReimbursements(
 
   const withCategory = (old: ReimbursementStore) => ({
     ...old,
-    categoryId: old.categoryId ?? categoryId,
+    categoryIds: old.categoryIds ?? trackedIds,
   });
   const byId = (id: string) => list.find((t) => t.id === id);
   return {
     store,
-    category,
+    tracked,
     loaded,
     loading,
     error,
@@ -154,8 +166,16 @@ export function useReimbursements(
     ledger,
     series,
     issues: reconciled.issues,
-    setCategoryId: (id: string) =>
-      update((old) => ({ ...old, categoryId: id })),
+    toggleCategory: (id: string) =>
+      update((old) => {
+        const ids = old.categoryIds ?? trackedIds;
+        return {
+          ...old,
+          categoryIds: ids.includes(id)
+            ? ids.filter((x) => x !== id)
+            : [...ids, id],
+        };
+      }),
     setStartDate: (startDate: string) =>
       update((old) => ({ ...old, startDate })),
     addMatch: (

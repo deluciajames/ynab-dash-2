@@ -27,10 +27,16 @@ const longDate = (date: string) =>
 const pairKey = (a: { outflowId: string; inflowId: string }) =>
   `${a.outflowId}|${a.inflowId}`;
 
-function Labels({ row }: { row: LedgerRow }) {
+// "Credit Card Credits (assign then transfer)" → "Credit Card Credits"
+const shortName = (name: string) => name.replace(/\s*\(.*\)\s*$/, "") || name;
+
+function Labels({ row, category }: { row: LedgerRow; category?: string }) {
   return (
     <>
-      {row.kind === "refund" && <span className="reimb-label">Refund or credit</span>}
+      {category && <span className="reimb-label category">{category}</span>}
+      {row.kind === "refund" && !category && (
+        <span className="reimb-label">Refund or credit</span>
+      )}
       {row.kind === "payment" && <span className="reimb-label">Payment</span>}
       {row.parentId && <span className="reimb-label">Split</span>}
       {row.pending && <span className="reimb-label pending">Pending</span>}
@@ -157,7 +163,13 @@ export function ReimbursementTracker({
     [edits, setEdits] = useState<Record<string, string>>({}),
     [importMessage, setImportMessage] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  const { ledger, store, category } = r;
+  const { ledger, store, tracked } = r;
+  // With several categories, rows outside the first one say where they are.
+  const categoryLabel = (row: LedgerRow) => {
+    if (tracked.length < 2 || row.categoryId === tracked[0].id) return undefined;
+    const c = tracked.find((x) => x.id === row.categoryId);
+    return c ? shortName(c.name) : undefined;
+  };
   const openOut = ledger.outflows.filter((x) => x.remaining > 0);
   const openIn = ledger.inflows.filter((x) => x.remaining > 0);
   const pickedOut = openOut.filter((x) => selectedOut.includes(x.id)),
@@ -225,7 +237,13 @@ export function ReimbursementTracker({
       if (fileInput.current) fileInput.current.value = "";
     }
   };
-  const categoryName = category?.name ?? "your reimbursement category";
+  const categoryName = tracked.length
+    ? tracked.map((c) => shortName(c.name)).join(" or ")
+    : "your reimbursement categories";
+  const pickerOrder = [
+    ...tracked,
+    ...categories.filter((c) => !tracked.some((t) => t.id === c.id)),
+  ];
   const matchesInView = store.matches.filter((m) =>
     m.allocations.some((a) => a.outflow.date >= store.startDate),
   );
@@ -235,7 +253,11 @@ export function ReimbursementTracker({
     <section className="reimb">
       <div className="heading">
         <div>
-          <div className="eyebrow">{category?.name ?? "Reimbursements"}</div>
+          <div className="eyebrow">
+            {tracked.length
+              ? tracked.map((c) => shortName(c.name)).join(" + ")
+              : "Reimbursements"}
+          </div>
           <h1>What you’re still owed.</h1>
           <p>
             Tick the money you paid out, then the money that came back for it.
@@ -244,23 +266,32 @@ export function ReimbursementTracker({
         </div>
       </div>
       <div className="reimb-settings">
-        <label>
-          Category
-          <select
-            value={category?.id ?? ""}
-            onChange={(e) => {
-              r.setCategoryId(e.target.value);
-              clearSelection();
-            }}
-          >
-            {!category && <option value="">Choose a category</option>}
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="reimb-cats">
+          <span id="reimb-cats-label">Categories</span>
+          <details>
+            <summary aria-describedby="reimb-cats-label">
+              {tracked.length
+                ? tracked.map((c) => shortName(c.name)).join(" + ")
+                : "Choose categories"}
+            </summary>
+            <fieldset>
+              <legend className="sr-only">Categories to track</legend>
+              {pickerOrder.map((c) => (
+                <label key={c.id}>
+                  <input
+                    type="checkbox"
+                    checked={tracked.some((t) => t.id === c.id)}
+                    onChange={() => {
+                      r.toggleCategory(c.id);
+                      clearSelection();
+                    }}
+                  />
+                  {c.name}
+                </label>
+              ))}
+            </fieldset>
+          </details>
+        </div>
         <label>
           Tracking since
           <input
@@ -307,22 +338,22 @@ export function ReimbursementTracker({
           {r.error}
         </div>
       )}
-      {!category && (
+      {!tracked.length && (
         <section className="empty-state">
-          <h2>Choose a category</h2>
+          <h2>Choose categories</h2>
           <p>
-            Pick the YNAB category you use for money you expect back, such as
-            “Getting Reimbursed.”
+            Pick the YNAB categories you use for money you expect back, such as
+            “Getting Reimbursed” and your credit card credits.
           </p>
         </section>
       )}
-      {category && !r.loaded && r.loading && (
+      {tracked.length > 0 && !r.loaded && r.loading && (
         <section className="empty-state" role="status">
           <h2>Loading transactions…</h2>
           <p>Gathering {categoryName} activity since {longDate(store.startDate)}.</p>
         </section>
       )}
-      {category && r.loaded && (
+      {tracked.length > 0 && r.loaded && (
         <>
           {r.issues.length > 0 && (
             <div className="reimb-review" role="alert">
@@ -469,7 +500,7 @@ export function ReimbursementTracker({
                           <td className="reimb-date">{shortDate(x.date)}</td>
                           <td>
                             <strong>{x.payee}</strong>
-                            <Labels row={x} />
+                            <Labels row={x} category={categoryLabel(x)} />
                             {x.memo && <small>{x.memo}</small>}
                           </td>
                           <td className="reimb-age-col">
@@ -528,7 +559,7 @@ export function ReimbursementTracker({
                         />
                         <span className="reimb-in-text">
                           <strong>{x.payee}</strong>
-                          <Labels row={x} />
+                          <Labels row={x} category={categoryLabel(x)} />
                           <small>
                             {shortDate(x.date)}
                             {x.memo ? ` · ${x.memo}` : ""}
