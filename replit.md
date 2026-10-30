@@ -48,11 +48,14 @@ A React-based budget calculator that connects to the YNAB API and uses percentil
 - `vite.config.ts` - Vite config (bound to 0.0.0.0:5000 for Replit)
 
 ## Running the App
+- Install dependencies after importing: `npm ci`
 - Dev server: `npm run dev` (runs on port 5000)
 - Build: `npm run build`
+- Tests: `npm test`
+- Use the **Start application** workflow to open the Replit preview. Connect your YNAB account using the in-app token dialog; no server-side secrets or database are required.
 
 ## Environment
-- Node.js 20
+- Node.js 22.6+ (Replit uses the Node.js 22 module)
 - npm for package management
 
 ## Notes
