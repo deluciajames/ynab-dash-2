@@ -167,10 +167,10 @@ export function CategoryDetail({
         {plan.type !== "oneoff" && !plan.currentSet && (
           <div className="goal-inputs">
             <label>
-              Current monthly contribution
+              Monthly target (none set in YNAB)
               <AmountInput
                 value={null}
-                label="Current monthly contribution"
+                label="Monthly target (none set in YNAB)"
                 nullable
                 onCommit={(currentMonthly) => onChange({ currentMonthly })}
               />
@@ -224,7 +224,7 @@ export function CategoryDetail({
           </div>
         )}
         <div>
-          Monthly funding need
+          Estimated need
           <strong>{plan.need === null ? "Review" : money(plan.need)}</strong>
         </div>
       </div>
@@ -244,8 +244,8 @@ export function CategoryDetail({
         )}
         {plan.type !== "oneoff" && (
           <>
-            <span style={{ color: "#a2633e" }}>– – Current</span>
-            <span style={{ color: "#236d59" }}>··· Proposed</span>
+            <span style={{ color: "#a2633e" }}>– – YNAB target</span>
+            <span style={{ color: "#236d59" }}>··· Your plan</span>
           </>
         )}
       </div>
@@ -337,7 +337,7 @@ export function CategoryDetail({
       <p className="history-note">
         {plan.type === "oneoff"
           ? `Recorded spending in the loaded history: ${money(plan.rawTotal)}. No repeat monthly allocation.`
-          : "Discrepancy = current monthly contribution − monthly funding need. A positive amount is a review opportunity; money already saved for obligations remains committed."}
+          : "Target vs. need = YNAB target − estimated monthly need. A positive amount is a review opportunity; money already saved for obligations remains committed."}
       </p>
       {plan.type !== "oneoff" && (
         <button

@@ -350,15 +350,24 @@ export function TargetCalculator({
           <thead>
             <tr>
               {[
-                "Group / category",
-                "Monthly need",
-                "Current / mo",
-                "Discrepancy",
-                "Proposed / mo",
-                "Recommendation",
-                "Plan as",
-              ].map((label) => (
-                <th scope="col" key={label}>
+                ["Group / category", ""],
+                [
+                  "Estimated need",
+                  "What this category needs each month, from its spending history or its bill and savings inputs",
+                ],
+                ["YNAB target", "Your current YNAB target as a monthly amount"],
+                [
+                  "Target vs. need",
+                  "YNAB target minus estimated need. Negative means the target is short.",
+                ],
+                [
+                  "Your plan",
+                  "Your sandbox amount. It starts at the YNAB target and never changes YNAB.",
+                ],
+                ["Suggestion", "Estimated need, rounded up to $5"],
+                ["Plan as", "Ongoing categories get a monthly plan; one-off ones do not"],
+              ].map(([label, help]) => (
+                <th scope="col" key={label} title={help || undefined}>
                   {label}
                 </th>
               ))}
@@ -484,7 +493,7 @@ export function TargetCalculator({
                             <AmountInput
                               className="target"
                               value={p.proposed}
-                              label={`Proposed monthly contribution for ${c.name}`}
+                              label={`Your monthly plan for ${c.name}`}
                               onCommit={(n) =>
                                 n !== null && onSetOverride(c.id, { target: n })
                               }
@@ -510,10 +519,11 @@ export function TargetCalculator({
         </table>
       </div>
       <p className="caption">
-        Monthly need uses the category’s purpose. Discrepancy = current
-        contribution − monthly need. Positive amounts warrant review; annual
-        obligations and reserves still need funding. Group totals include
-        categories hidden by filters.
+        All amounts are per month. Estimated need follows each category’s
+        purpose; target vs. need = YNAB target − estimated need. Your plan is a
+        sandbox that never changes YNAB. Positive amounts warrant review;
+        annual obligations and reserves still need funding. Group totals
+        include categories hidden by filters.
       </p>
       <section className="oneoff-section">
         <div className="oneoff-heading">

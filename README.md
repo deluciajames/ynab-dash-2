@@ -6,7 +6,7 @@ A personal YNAB dashboard for comparing your spending with your targets, plannin
 
 Connect to YNAB with your personal access token, then select a budget. Groups start collapsed; open a group, search for a category, or filter to categories that need attention. Click a category name to review its monthly spending and planning inputs.
 
-- **Monthly need** follows the category's purpose; **Discrepancy** is the current monthly contribution minus that need.
+- The table's columns, all per month: **Estimated need** (from the category's purpose and history), **YNAB target** (your current target as a monthly amount), **Target vs. need** (YNAB target minus estimated need), **Your plan** (the sandbox amount you edit; it starts at the YNAB target and never changes YNAB) and **Suggestion** (estimated need rounded up to $5). Hover a column heading for its definition.
 - **Monthly spending** uses the larger of the included-month average and the 75th percentile. A known fixed bill uses its current contribution. Suggested amounts round up to $5.
 - **Annual / due-date bills** use the expected amount, funding already credited, and remaining deposits. This assumes a deposit this month and before payment in the due month; revise the date or credited amount when that assumption does not fit.
 - **Irregular expenses** use an expected yearly amount divided by 12. A full year of history can provide a starting estimate. Review starting reserves and bill timing; this alone does not guarantee that an early expense is covered.
