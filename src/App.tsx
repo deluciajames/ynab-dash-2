@@ -6,6 +6,7 @@ import { TargetCalculator } from "./components/TargetCalculator";
 import { CategoryDetail } from "./components/CategoryDetail";
 import { SankeyReport } from "./components/SankeyReport";
 import { SortGroupsModal } from "./components/SortGroupsModal";
+import { ReimbursementTracker } from "./components/ReimbursementTracker";
 import { useApiKey, useBudgetId } from "./hooks/useApiKey";
 import {
   useCachedBudgetData,
@@ -13,6 +14,8 @@ import {
 } from "./hooks/useCachedBudgetData";
 import { useGroupSortOrder } from "./hooks/useGroupSortOrder";
 import { useBudgetPlan } from "./hooks/useBudgetPlan";
+import { useReimbursements } from "./hooks/useReimbursements";
+import { money } from "./lib/money";
 import { fetchAllMonthDetails, fetchCategoriesWithGoals } from "./api/ynab";
 import { transformYnabData } from "./api/transform";
 import { planCategory, totalPlan } from "./api/planning";
@@ -35,7 +38,10 @@ function App() {
     [loading, setLoading] = useState(false),
     [error, setError] = useState("");
   const [showSort, setShowSort] = useState(false),
-    [tab, setTab] = useState<"budget" | "reports">("budget"),
+    [tab, setTab] = useState<"budget" | "reports" | "reimbursements">(
+      "budget",
+    ),
+    [refreshKey, setRefreshKey] = useState(0),
     [selected, setSelected] = useState<string | null>(null);
   const generation = useRef(0);
   const fetchBudget = useCallback(
@@ -85,8 +91,10 @@ function App() {
     };
   }, [apiKey, budgetId, fetchBudget, loadCached]);
   const refresh = () => {
-    if (apiKey && budgetId)
+    if (apiKey && budgetId) {
       void fetchBudget(apiKey, budgetId, ++generation.current);
+      setRefreshKey((n) => n + 1);
+    }
   };
   const disconnect = () => {
     generation.current++;
@@ -118,6 +126,13 @@ function App() {
     expenses.map((c) => [c.id, plans[c.id].proposed ?? 0]),
   );
   const hasData = active.categories.length > 0;
+  const reimbursements = useReimbursements(
+    apiKey,
+    budgetId,
+    expenses,
+    refreshKey,
+  );
+  const owed = reimbursements.loaded ? reimbursements.ledger.totals.owed : 0;
   return (
     <div className="budget-app">
       <header>
@@ -157,14 +172,25 @@ function App() {
               </button>
             </>
           )}
-          {hasData && (
-            <button
-              className="quiet"
-              onClick={() => setTab(tab === "budget" ? "reports" : "budget")}
-            >
-              {tab === "budget" ? "Reports" : "Budget"}
-            </button>
-          )}
+          {hasData &&
+            (
+              [
+                ["budget", "Budget"],
+                ["reports", "Reports"],
+                ["reimbursements", "Reimbursements"],
+              ] as const
+            )
+              .filter(([id]) => id !== tab)
+              .map(([id, label]) => (
+                <button key={id} className="quiet" onClick={() => setTab(id)}>
+                  {label}
+                  {id === "reimbursements" && owed > 0 && (
+                    <span className="owed-badge">
+                      {money(owed / 100)} owed
+                    </span>
+                  )}
+                </button>
+              ))}
           <ApiKeyDialog
             apiKey={apiKey}
             onConnect={setApiKey}
@@ -183,7 +209,7 @@ function App() {
             </p>
             <p>
               Use “Connect to YNAB” above to enter your personal access token.
-              Your proposed plan stays in this browser; it does not change YNAB.
+              Your plan stays in this browser; it does not change YNAB.
             </p>
           </section>
         )}
@@ -234,11 +260,17 @@ function App() {
                 onReset={settings.resetTargets}
                 availableMonths={active.availableMonths}
               />
+            ) : tab === "reimbursements" ? (
+              <ReimbursementTracker
+                key={budgetId}
+                r={reimbursements}
+                categories={expenses}
+              />
             ) : (
               <>
                 <div className="heading">
                   <div>
-                    <div className="eyebrow">Your proposed plan</div>
+                    <div className="eyebrow">Your plan</div>
                     <h1>Where your money goes.</h1>
                     <p>
                       The same category contributions and One-Off reserve as

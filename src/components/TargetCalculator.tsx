@@ -69,7 +69,7 @@ export function TargetCalculator({
     over = confirmed && left !== null && left < 0;
   const filtering = query.trim() !== "" || filter !== "all";
   const kind = (p: CategoryPlan) =>
-    p.current === null || p.need === null
+    p.need === null
       ? "need"
       : p.discrepancy! < -0.5
         ? "need"
@@ -228,7 +228,7 @@ export function TargetCalculator({
           <small>Your confirmed planning amount · editable</small>
         </section>
         <section className="card">
-          <div className="label">Proposed monthly plan</div>
+          <div className="label">Your monthly plan</div>
           <div id="total" className="amount">
             {totals.missingTargets ? "At least " : ""}
             {money(totals.total)}
@@ -256,7 +256,7 @@ export function TargetCalculator({
               : takeHome === null
                 ? "Enter income to check the plan"
                 : over
-                  ? "Reduce your proposed contributions"
+                  ? "Reduce your plan"
                   : "Includes reserves and savings"}
           </small>
           <div className="meter">
@@ -275,7 +275,7 @@ export function TargetCalculator({
       >
         <span>
           {totals.missingTargets ? (
-            `${totals.missingTargets} categories have no monthly contribution yet. Set a proposed amount or review their recommendation before treating this plan as complete.`
+            `${totals.missingTargets} categories have no monthly contribution yet. Set an amount in your plan or review their suggestion before treating this plan as complete.`
           ) : (
             <>
               Choose <b>One-off</b> on a category or group to remove its ongoing
@@ -350,15 +350,24 @@ export function TargetCalculator({
           <thead>
             <tr>
               {[
-                "Group / category",
-                "Monthly need",
-                "Current / mo",
-                "Discrepancy",
-                "Proposed / mo",
-                "Recommendation",
-                "Plan as",
-              ].map((label) => (
-                <th scope="col" key={label}>
+                ["Group / category", ""],
+                [
+                  "Estimated need",
+                  "What this category needs each month, from its spending history or its bill and savings inputs",
+                ],
+                ["YNAB target", "Your current YNAB target as a monthly amount"],
+                [
+                  "Target vs. need",
+                  "YNAB target minus estimated need. Negative means the target is short.",
+                ],
+                [
+                  "Your plan",
+                  "Your sandbox amount. It starts at the YNAB target and never changes YNAB.",
+                ],
+                ["Suggestion", "Estimated need, rounded up to $5"],
+                ["Plan as", "Ongoing categories get a monthly plan; one-off ones do not"],
+              ].map(([label, help]) => (
+                <th scope="col" key={label} title={help || undefined}>
                   {label}
                 </th>
               ))}
@@ -454,12 +463,13 @@ export function TargetCalculator({
                             <small className="method">{p.method}</small>
                           </td>
                           <td>
-                            {p.current === null ? (
+                            {!p.currentSet ? (
                               <button
                                 className="category-name inline-setup"
                                 onClick={() => onSelectCategory(c)}
+                                title="No YNAB target or entered amount; counted as $0"
                               >
-                                Not set
+                                {money(0)} · not set
                               </button>
                             ) : (
                               money(p.current)
@@ -483,7 +493,7 @@ export function TargetCalculator({
                             <AmountInput
                               className="target"
                               value={p.proposed}
-                              label={`Proposed monthly contribution for ${c.name}`}
+                              label={`Your monthly plan for ${c.name}`}
                               onCommit={(n) =>
                                 n !== null && onSetOverride(c.id, { target: n })
                               }
@@ -509,10 +519,11 @@ export function TargetCalculator({
         </table>
       </div>
       <p className="caption">
-        Monthly need uses the category’s purpose. Discrepancy = current
-        contribution − monthly need. Positive amounts warrant review; annual
-        obligations and reserves still need funding. Group totals include
-        categories hidden by filters.
+        All amounts are per month. Estimated need follows each category’s
+        purpose; target vs. need = YNAB target − estimated need. Your plan is a
+        sandbox that never changes YNAB. Positive amounts warrant review;
+        annual obligations and reserves still need funding. Group totals
+        include categories hidden by filters.
       </p>
       <section className="oneoff-section">
         <div className="oneoff-heading">
@@ -659,7 +670,7 @@ export function TargetCalculator({
                 ? "Enter income to check your plan."
                 : over
                   ? `Reduce this plan by ${money(Math.abs(left!))} to fit your income.`
-                  : `Your proposed plan fits, with ${money(left!)} left.`}
+                  : `Your plan fits, with ${money(left!)} left.`}
           </strong>
           <p>Try changes here. Your YNAB budget stays unchanged.</p>
         </div>
@@ -668,11 +679,11 @@ export function TargetCalculator({
           onClick={() => {
             onReset();
             setNotice(
-              "Proposed targets reset. Your category purposes, exclusions and reserve are preserved.",
+              "Your plan is reset to your YNAB targets. Category purposes, exclusions and reserve are preserved.",
             );
           }}
         >
-          Reset proposed targets
+          Reset your plan
         </button>
       </div>
       <p className="caption" role="status" aria-live="polite">

@@ -129,16 +129,21 @@ export function transformYnabData(
     item.total = vals.reduce((s, n) => s - n, 0);
     item.average = vals.length ? item.total / vals.length : 0;
   }
+  // The categories endpoint lists groups and categories in YNAB's display
+  // order; anything it no longer lists (archived history) goes last.
+  const position = (order: string[]) => {
+    const index = new Map(order.map((id, i) => [id, i]));
+    return (a: { id: string }, b: { id: string }) =>
+      (index.get(a.id) ?? Infinity) - (index.get(b.id) ?? Infinity) || 0;
+  };
+  const current = Object.values(goalMap);
   return {
-    categories: [...categories.values()],
-    groups: [...groups.values()].sort((a, b) => {
-      const order = [
-        ...new Set(Object.values(goalMap).map((c) => c.category_group_id)),
-      ];
-      const ai = order.indexOf(a.id),
-        bi = order.indexOf(b.id);
-      return (ai < 0 ? Infinity : ai) - (bi < 0 ? Infinity : bi) || 0;
-    }),
+    categories: [...categories.values()].sort(
+      position(current.map((c) => c.id)),
+    ),
+    groups: [...groups.values()].sort(
+      position([...new Set(current.map((c) => c.category_group_id))]),
+    ),
     availableMonths: sorted.map((m) => m.month),
   };
 }

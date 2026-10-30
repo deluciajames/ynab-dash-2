@@ -117,7 +117,7 @@ with sync_playwright() as p:
     expect(page.locator('#total')).to_have_text('$11,275')
     page.get_by_role('button',name='All',exact=True).click()
     page.get_by_role('button',name='Apply recommendations for Food & dining',exact=True).click()
-    page.get_by_role('button',name='Reset proposed targets',exact=True).click()
+    page.get_by_role('button',name='Reset your plan',exact=True).click()
     expect(page.locator('#total')).to_have_text('$11,325')
     page.get_by_role('spinbutton',name='Choose your yearly reserve',exact=True).fill('12000')
     page.get_by_role('spinbutton',name='Choose your yearly reserve',exact=True).press('Tab')
@@ -160,16 +160,18 @@ with sync_playwright() as p:
     expect(page.locator('.bar-amount').first).to_have_text('-$200')
     assert page.locator('.chart-bar').first.evaluate('(el)=>Number(el.getAttribute("height"))>0')
     page.get_by_role('button',name='Close',exact=True).click()
-    # Unknown contributions cannot masquerade as a balanced, complete plan.
+    # A blank contribution counts as $0: the plan stays complete and the row says it is not set.
     item=next(c for c in metadata if c['name']=='Storage')
     item['goal_type']=None
     item['goal_target']=None
     page.get_by_role('button',name='Refresh',exact=True).click()
     page.wait_for_load_state('networkidle')
-    expect(page.locator('#remaining')).to_have_text('—')
-    assert 'Plan incomplete' in page.locator('.summary').inner_text()
-    assert page.locator('#total').inner_text().startswith('At least ')
+    expect(page.locator('#remaining')).not_to_have_text('—')
+    assert 'Plan incomplete' not in page.locator('.summary').inner_text()
+    assert not page.locator('#total').inner_text().startswith('At least ')
+    page.get_by_role('searchbox',name='Search categories or groups',exact=True).fill('Storage')
+    expect(page.get_by_role('button',name='$0 · not set',exact=True)).to_be_visible()
     assert not errors,errors
     assert not writes,writes
-    print('Browser checks passed: 103 categories, annual funding, chart scales/labels, persisted exclusions/reasons, one-off moves/restores, group recommendations, reset, reserve, income warnings, reports, budget isolation, mobile and keyboard dialog close. No YNAB writes.')
+    print('Browser checks passed: 103 categories, annual funding, chart scales/labels, persisted exclusions/reasons, one-off moves/restores, group recommendations, reset, reserve, income warnings, blank contributions as $0, reports, budget isolation, mobile and keyboard dialog close. No YNAB writes.')
     browser.close()
