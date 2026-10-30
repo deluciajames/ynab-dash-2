@@ -1,6 +1,6 @@
 # Budget clarity
 
-A personal YNAB dashboard for comparing your spending with your targets, planning for future expenses, and checking that the proposed plan fits your take-home income.
+A personal YNAB dashboard for comparing your spending with your targets, planning for future expenses, and checking that your plan fits your take-home income.
 
 ## Using the app
 
@@ -13,7 +13,7 @@ Connect to YNAB with your personal access token, then select a budget. Groups st
 - **Savings goals** use a chosen contribution, rather than their spending activity.
 - **One-Off** categories keep their history but have no recurring allocation. A separate yearly reserve is included once in the monthly plan.
 
-Recommendations, target edits, category purposes, exclusion reasons, income and reserves are saved **per budget in your browser**. They never update YNAB. Opening another browser or clearing its storage does not carry these settings over. Resetting proposed targets preserves purposes, exclusions, income and reserves.
+Recommendations, target edits, category purposes, exclusion reasons, income and reserves are saved **per budget in your browser**. They never update YNAB. Opening another browser or clearing its storage does not carry these settings over. Resetting your plan returns it to your YNAB targets and preserves purposes, exclusions, income and reserves.
 
 A category with no YNAB target or entered contribution counts as $0, so totals always calculate; it shows “$0 · not set” so a blank is easy to tell from a real $0. Exclusions affect monthly planning only: actual historical spending and chart bars stay visible. At least one observed month must remain included. Annual and irregular calculations use expected-cost inputs, so their bill months are not removed from funding calculations.
 

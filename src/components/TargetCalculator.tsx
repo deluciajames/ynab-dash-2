@@ -228,7 +228,7 @@ export function TargetCalculator({
           <small>Your confirmed planning amount · editable</small>
         </section>
         <section className="card">
-          <div className="label">Proposed monthly plan</div>
+          <div className="label">Your monthly plan</div>
           <div id="total" className="amount">
             {totals.missingTargets ? "At least " : ""}
             {money(totals.total)}
@@ -256,7 +256,7 @@ export function TargetCalculator({
               : takeHome === null
                 ? "Enter income to check the plan"
                 : over
-                  ? "Reduce your proposed contributions"
+                  ? "Reduce your plan"
                   : "Includes reserves and savings"}
           </small>
           <div className="meter">
@@ -275,7 +275,7 @@ export function TargetCalculator({
       >
         <span>
           {totals.missingTargets ? (
-            `${totals.missingTargets} categories have no monthly contribution yet. Set a proposed amount or review their recommendation before treating this plan as complete.`
+            `${totals.missingTargets} categories have no monthly contribution yet. Set an amount in your plan or review their suggestion before treating this plan as complete.`
           ) : (
             <>
               Choose <b>One-off</b> on a category or group to remove its ongoing
@@ -670,7 +670,7 @@ export function TargetCalculator({
                 ? "Enter income to check your plan."
                 : over
                   ? `Reduce this plan by ${money(Math.abs(left!))} to fit your income.`
-                  : `Your proposed plan fits, with ${money(left!)} left.`}
+                  : `Your plan fits, with ${money(left!)} left.`}
           </strong>
           <p>Try changes here. Your YNAB budget stays unchanged.</p>
         </div>
@@ -679,11 +679,11 @@ export function TargetCalculator({
           onClick={() => {
             onReset();
             setNotice(
-              "Proposed targets reset. Your category purposes, exclusions and reserve are preserved.",
+              "Your plan is reset to your YNAB targets. Category purposes, exclusions and reserve are preserved.",
             );
           }}
         >
-          Reset proposed targets
+          Reset your plan
         </button>
       </div>
       <p className="caption" role="status" aria-live="polite">

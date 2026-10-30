@@ -117,7 +117,7 @@ with sync_playwright() as p:
     expect(page.locator('#total')).to_have_text('$11,275')
     page.get_by_role('button',name='All',exact=True).click()
     page.get_by_role('button',name='Apply recommendations for Food & dining',exact=True).click()
-    page.get_by_role('button',name='Reset proposed targets',exact=True).click()
+    page.get_by_role('button',name='Reset your plan',exact=True).click()
     expect(page.locator('#total')).to_have_text('$11,325')
     page.get_by_role('spinbutton',name='Choose your yearly reserve',exact=True).fill('12000')
     page.get_by_role('spinbutton',name='Choose your yearly reserve',exact=True).press('Tab')

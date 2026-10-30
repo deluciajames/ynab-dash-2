@@ -209,7 +209,7 @@ function App() {
             </p>
             <p>
               Use “Connect to YNAB” above to enter your personal access token.
-              Your proposed plan stays in this browser; it does not change YNAB.
+              Your plan stays in this browser; it does not change YNAB.
             </p>
           </section>
         )}
@@ -270,7 +270,7 @@ function App() {
               <>
                 <div className="heading">
                   <div>
-                    <div className="eyebrow">Your proposed plan</div>
+                    <div className="eyebrow">Your plan</div>
                     <h1>Where your money goes.</h1>
                     <p>
                       The same category contributions and One-Off reserve as
