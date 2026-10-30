@@ -69,7 +69,7 @@ export function TargetCalculator({
     over = confirmed && left !== null && left < 0;
   const filtering = query.trim() !== "" || filter !== "all";
   const kind = (p: CategoryPlan) =>
-    p.current === null || p.need === null
+    p.need === null
       ? "need"
       : p.discrepancy! < -0.5
         ? "need"
@@ -454,12 +454,13 @@ export function TargetCalculator({
                             <small className="method">{p.method}</small>
                           </td>
                           <td>
-                            {p.current === null ? (
+                            {!p.currentSet ? (
                               <button
                                 className="category-name inline-setup"
                                 onClick={() => onSelectCategory(c)}
+                                title="No YNAB target or entered amount; counted as $0"
                               >
-                                Not set
+                                {money(0)} · not set
                               </button>
                             ) : (
                               money(p.current)

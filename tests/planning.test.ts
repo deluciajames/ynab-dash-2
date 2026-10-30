@@ -113,11 +113,18 @@ test("zero spending and a valid zero YNAB target are preserved", () => {
   assert.equal(p.need, 0);
   assert.equal(p.recommendation, 0);
 });
-test("no target is unknown and does not silently become a recommendation", () => {
+test("no target counts as $0 without blocking the plan", () => {
   const p = planCategory(category(undefined, { goal: null }), {}, today);
-  assert.equal(p.current, null);
-  assert.equal(p.proposed, null);
-  assert.equal(totalPlan([p], 0).missingTargets, 1);
+  assert.equal(p.current, 0);
+  assert.equal(p.currentSet, false);
+  assert.equal(p.proposed, 0);
+  assert.equal(p.discrepancy, -p.need!);
+  assert.equal(p.recommendation, 100);
+  assert.deepEqual(totalPlan([p], 0), { total: 0, missingTargets: 0 });
+  const cleared = planCategory(category(), { currentMonthly: null }, today);
+  assert.equal(cleared.current, 0);
+  assert.equal(cleared.currentSet, false);
+  assert.equal(planCategory(category(), {}, today).currentSet, true);
 });
 test("observed missing history is not padded with fictitious zero months", () => {
   const p = planCategory(category([100, 200, 300]), {}, today);
@@ -235,7 +242,8 @@ test("undated total-balance goal is not confused with a monthly contribution", (
   });
   const p = planCategory(c, {}, today);
   assert.equal(p.type, "savings");
-  assert.equal(p.current, null);
+  assert.equal(p.current, 0);
+  assert.equal(p.currentSet, false);
   assert.equal(p.need, null);
   assert.equal(planCategory(c, { savingsMonthly: 250 }, today).need, 250);
 });

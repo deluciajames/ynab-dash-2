@@ -164,12 +164,12 @@ export function CategoryDetail({
             This is a known fixed bill
           </label>
         )}
-        {plan.type !== "oneoff" && plan.current === null && (
+        {plan.type !== "oneoff" && !plan.currentSet && (
           <div className="goal-inputs">
             <label>
               Current monthly contribution
               <AmountInput
-                value={plan.current}
+                value={null}
                 label="Current monthly contribution"
                 nullable
                 onCommit={(currentMonthly) => onChange({ currentMonthly })}
