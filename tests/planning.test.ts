@@ -313,6 +313,28 @@ test("small chart scale and all-zero chart have appropriate finite ranges", () =
 test("legacy display-month exclusions normalize to stable ISO month keys", () => {
   assert.equal(normalizeMonth("Dec 2025"), "2025-12-01");
 });
+test("categories follow YNAB's display order, not monthly history order", () => {
+  const cat = (id: string, name: string) => apiCategory({ id, name });
+  const months: YnabMonthDetail[] = [
+    {
+      month: dates[0],
+      income: 0,
+      budgeted: 0,
+      activity: 0,
+      // Monthly history lists categories in its own order, plus an archived one.
+      categories: [cat("b", "Zoo"), cat("gone", "Archived"), cat("a", "Rent")],
+    },
+  ];
+  const result = transformYnabData(months, {
+    a: cat("a", "Rent"),
+    c: cat("c", "Utilities"),
+    b: cat("b", "Zoo"),
+  });
+  assert.deepEqual(
+    result.categories.map((c) => c.id),
+    ["a", "c", "b", "gone"],
+  );
+});
 test("transform retains current metadata, zero goals, and categories without historical rows", () => {
   const old = apiCategory({
     name: "Old name",

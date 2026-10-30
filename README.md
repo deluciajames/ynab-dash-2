@@ -19,7 +19,7 @@ A category with no YNAB target or entered contribution counts as $0, so totals a
 
 The app loads up to 12 completed budget months, excluding the unfinished current month. It retains zero-spend months where YNAB reports them and does not invent history for new categories. Archived/hidden categories start in One-Off and can be restored. Recorded One-Off spending covers the loaded window, not lifetime costs. Refunds and credits offset historical spending and appear below zero in the chart; recommendations remain nonnegative. This uses net category activity, not gross purchase totals. Amounts are displayed in USD, as in the original app.
 
-YNAB target cadence and current goal metadata come from the current categories endpoint. Weekly targets use a yearly monthly equivalent (52/12); dated bills use the due-date funding calculation. Undated total-balance goals count as $0 a month until you choose a monthly contribution. Funding credited by YNAB may include payments already made in the goal period; review it when planning a different future bill. Actual income is not auto-identified from category names: enter a confirmed take-home amount.
+YNAB target cadence, current goal metadata and the order of groups and categories come from the current categories endpoint, which lists them as YNAB displays them. Weekly targets use a yearly monthly equivalent (52/12); dated bills use the due-date funding calculation. Undated total-balance goals count as $0 a month until you choose a monthly contribution. Funding credited by YNAB may include payments already made in the goal period; review it when planning a different future bill. Actual income is not auto-identified from category names: enter a confirmed take-home amount.
 
 ## Reimbursement tracker
 
