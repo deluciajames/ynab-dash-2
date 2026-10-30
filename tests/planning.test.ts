@@ -113,11 +113,18 @@ test("zero spending and a valid zero YNAB target are preserved", () => {
   assert.equal(p.need, 0);
   assert.equal(p.recommendation, 0);
 });
-test("no target is unknown and does not silently become a recommendation", () => {
+test("no target counts as $0 without blocking the plan", () => {
   const p = planCategory(category(undefined, { goal: null }), {}, today);
-  assert.equal(p.current, null);
-  assert.equal(p.proposed, null);
-  assert.equal(totalPlan([p], 0).missingTargets, 1);
+  assert.equal(p.current, 0);
+  assert.equal(p.currentSet, false);
+  assert.equal(p.proposed, 0);
+  assert.equal(p.discrepancy, -p.need!);
+  assert.equal(p.recommendation, 100);
+  assert.deepEqual(totalPlan([p], 0), { total: 0, missingTargets: 0 });
+  const cleared = planCategory(category(), { currentMonthly: null }, today);
+  assert.equal(cleared.current, 0);
+  assert.equal(cleared.currentSet, false);
+  assert.equal(planCategory(category(), {}, today).currentSet, true);
 });
 test("observed missing history is not padded with fictitious zero months", () => {
   const p = planCategory(category([100, 200, 300]), {}, today);
@@ -235,7 +242,8 @@ test("undated total-balance goal is not confused with a monthly contribution", (
   });
   const p = planCategory(c, {}, today);
   assert.equal(p.type, "savings");
-  assert.equal(p.current, null);
+  assert.equal(p.current, 0);
+  assert.equal(p.currentSet, false);
   assert.equal(p.need, null);
   assert.equal(planCategory(c, { savingsMonthly: 250 }, today).need, 250);
 });
@@ -304,6 +312,28 @@ test("small chart scale and all-zero chart have appropriate finite ranges", () =
 });
 test("legacy display-month exclusions normalize to stable ISO month keys", () => {
   assert.equal(normalizeMonth("Dec 2025"), "2025-12-01");
+});
+test("categories follow YNAB's display order, not monthly history order", () => {
+  const cat = (id: string, name: string) => apiCategory({ id, name });
+  const months: YnabMonthDetail[] = [
+    {
+      month: dates[0],
+      income: 0,
+      budgeted: 0,
+      activity: 0,
+      // Monthly history lists categories in its own order, plus an archived one.
+      categories: [cat("b", "Zoo"), cat("gone", "Archived"), cat("a", "Rent")],
+    },
+  ];
+  const result = transformYnabData(months, {
+    a: cat("a", "Rent"),
+    c: cat("c", "Utilities"),
+    b: cat("b", "Zoo"),
+  });
+  assert.deepEqual(
+    result.categories.map((c) => c.id),
+    ["a", "c", "b", "gone"],
+  );
 });
 test("transform retains current metadata, zero goals, and categories without historical rows", () => {
   const old = apiCategory({

@@ -150,7 +150,11 @@ export function planCategory(
     average = included.length
       ? included.reduce((s, m) => s + m.amount, 0) / included.length
       : null;
-  const current = currentContribution(cat, ov);
+  // A blank contribution counts as $0 so totals never stall; currentSet
+  // records whether a real amount exists.
+  const setContribution = currentContribution(cat, ov),
+    currentSet = setContribution !== null,
+    current = setContribution ?? 0;
   const goal = cat.goal;
   const billAmount =
     ov.billAmount !== undefined ? ov.billAmount : (goal?.target ?? null);
@@ -179,7 +183,7 @@ export function planCategory(
     ov.savingsMonthly !== undefined
       ? ov.savingsMonthly
       : goal?.type === "MF"
-        ? current
+        ? setContribution
         : null;
   let need: number | null = null,
     explanation = "",
@@ -237,7 +241,7 @@ export function planCategory(
     need === null || type === "oneoff" ? null : Math.ceil(need / 5) * 5;
   const proposed =
     type === "oneoff" ? 0 : finiteAmount(ov.target) ? ov.target : current;
-  const discrepancy = current !== null && need !== null ? current - need : null;
+  const discrepancy = need !== null ? current - need : null;
   return {
     type,
     history,
@@ -246,6 +250,7 @@ export function planCategory(
     average,
     includedCount: included.length,
     current,
+    currentSet,
     need,
     recommendation,
     proposed,

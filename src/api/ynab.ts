@@ -165,3 +165,55 @@ export async function validateToken(token: string): Promise<boolean> {
     return false;
   }
 }
+
+// Split parts arrive as their own rows (type "subtransaction") with their own
+// id and amount, so only the portion in the category is returned.
+export interface YnabHybridTransaction {
+  id: string;
+  date: string;
+  amount: number;
+  memo: string | null;
+  cleared: "cleared" | "uncleared" | "reconciled";
+  approved: boolean;
+  flag_color: string | null;
+  account_id: string;
+  account_name: string;
+  payee_id: string | null;
+  payee_name: string | null;
+  category_id: string | null;
+  transfer_account_id: string | null;
+  deleted: boolean;
+  type: "transaction" | "subtransaction";
+  parent_transaction_id: string | null;
+}
+
+export async function fetchCategoryTransactions(
+  token: string,
+  budgetId: string,
+  categoryId: string,
+  sinceDate: string,
+): Promise<YnabHybridTransaction[]> {
+  const data = await ynabFetch<{ transactions: YnabHybridTransaction[] }>(
+    `/budgets/${budgetId}/categories/${categoryId}/transactions?since_date=${sinceDate}`,
+    token,
+  );
+  return data.transactions;
+}
+
+export interface YnabTransactionSummary {
+  id: string;
+  payee_name: string | null;
+  memo: string | null;
+}
+
+export async function fetchTransactionsSince(
+  token: string,
+  budgetId: string,
+  sinceDate: string,
+): Promise<YnabTransactionSummary[]> {
+  const data = await ynabFetch<{ transactions: YnabTransactionSummary[] }>(
+    `/budgets/${budgetId}/transactions?since_date=${sinceDate}`,
+    token,
+  );
+  return data.transactions;
+}

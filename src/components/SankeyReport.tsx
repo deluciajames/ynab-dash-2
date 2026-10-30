@@ -74,7 +74,7 @@ export function SankeyReport({
     nodes.push({
       id: "Plan",
       nodeColor: "#236d59",
-      nodeLabel: "Proposed monthly plan",
+      nodeLabel: "Your monthly plan",
     });
 
     let totalExpenseTarget = 0;
@@ -186,14 +186,14 @@ export function SankeyReport({
         Object.values(targetMap).reduce((s, n) => s + n, 0) + reserveMonthly >
           takeHome && (
           <p className="report-warning">
-            The proposed plan exceeds your income. The red unfunded amount needs
+            Your plan exceeds your income. The red unfunded amount needs
             reductions; it is not additional income.
           </p>
         )}
       <div className="mb-4">
         <h2 className="text-lg font-semibold text-slate-900">Money Flow</h2>
         <p className="text-sm text-slate-500">
-          How your confirmed planning income funds the proposed plan
+          How your confirmed planning income funds your plan
         </p>
       </div>
       <div style={{ height: Math.max(500, sankeyData.nodes.length * 28) }}>

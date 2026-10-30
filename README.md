@@ -1,25 +1,33 @@
 # Budget clarity
 
-A personal YNAB dashboard for comparing your spending with your targets, planning for future expenses, and checking that the proposed plan fits your take-home income.
+A personal YNAB dashboard for comparing your spending with your targets, planning for future expenses, and checking that your plan fits your take-home income.
 
 ## Using the app
 
 Connect to YNAB with your personal access token, then select a budget. Groups start collapsed; open a group, search for a category, or filter to categories that need attention. Click a category name to review its monthly spending and planning inputs.
 
-- **Monthly need** follows the category's purpose; **Discrepancy** is the current monthly contribution minus that need.
+- The table's columns, all per month: **Estimated need** (from the category's purpose and history), **YNAB target** (your current target as a monthly amount), **Target vs. need** (YNAB target minus estimated need), **Your plan** (the sandbox amount you edit; it starts at the YNAB target and never changes YNAB) and **Suggestion** (estimated need rounded up to $5). Hover a column heading for its definition.
 - **Monthly spending** uses the larger of the included-month average and the 75th percentile. A known fixed bill uses its current contribution. Suggested amounts round up to $5.
 - **Annual / due-date bills** use the expected amount, funding already credited, and remaining deposits. This assumes a deposit this month and before payment in the due month; revise the date or credited amount when that assumption does not fit.
 - **Irregular expenses** use an expected yearly amount divided by 12. A full year of history can provide a starting estimate. Review starting reserves and bill timing; this alone does not guarantee that an early expense is covered.
 - **Savings goals** use a chosen contribution, rather than their spending activity.
 - **One-Off** categories keep their history but have no recurring allocation. A separate yearly reserve is included once in the monthly plan.
 
-Recommendations, target edits, category purposes, exclusion reasons, income and reserves are saved **per budget in your browser**. They never update YNAB. Opening another browser or clearing its storage does not carry these settings over. Resetting proposed targets preserves purposes, exclusions, income and reserves.
+Recommendations, target edits, category purposes, exclusion reasons, income and reserves are saved **per budget in your browser**. They never update YNAB. Opening another browser or clearing its storage does not carry these settings over. Resetting your plan returns it to your YNAB targets and preserves purposes, exclusions, income and reserves.
 
-A missing target stays “Not set.” The total is marked incomplete until its proposed contribution is chosen. Exclusions affect monthly planning only: actual historical spending and chart bars stay visible. At least one observed month must remain included. Annual and irregular calculations use expected-cost inputs, so their bill months are not removed from funding calculations.
+A category with no YNAB target or entered contribution counts as $0, so totals always calculate; it shows “$0 · not set” so a blank is easy to tell from a real $0. Exclusions affect monthly planning only: actual historical spending and chart bars stay visible. At least one observed month must remain included. Annual and irregular calculations use expected-cost inputs, so their bill months are not removed from funding calculations.
 
 The app loads up to 12 completed budget months, excluding the unfinished current month. It retains zero-spend months where YNAB reports them and does not invent history for new categories. Archived/hidden categories start in One-Off and can be restored. Recorded One-Off spending covers the loaded window, not lifetime costs. Refunds and credits offset historical spending and appear below zero in the chart; recommendations remain nonnegative. This uses net category activity, not gross purchase totals. Amounts are displayed in USD, as in the original app.
 
-YNAB target cadence and current goal metadata come from the current categories endpoint. Weekly targets use a yearly monthly equivalent (52/12); dated bills use the due-date funding calculation. Undated total-balance goals require a chosen monthly contribution. Funding credited by YNAB may include payments already made in the goal period; review it when planning a different future bill. Actual income is not auto-identified from category names: enter a confirmed take-home amount.
+YNAB target cadence, current goal metadata and the order of groups and categories come from the current categories endpoint, which lists them as YNAB displays them. Weekly targets use a yearly monthly equivalent (52/12); dated bills use the due-date funding calculation. Undated total-balance goals count as $0 a month until you choose a monthly contribution. Funding credited by YNAB may include payments already made in the goal period; review it when planning a different future bill. Actual income is not auto-identified from category names: enter a confirmed take-home amount.
+
+## Reimbursement tracker
+
+**Reimbursements** lists every transaction in your “Getting Reimbursed” category and any “Credit Card Credits” category (found by name; choose any set of categories) since the tracking start date, which defaults to the first of the month four months back. Split purchases appear as just their reimbursed part. Tick money out and the money in that paid it back, then **Mark as reimbursed**. One payment can cover several items, and several payments can cover one item; edit the proposed amounts before saving, and anything left over stays open. **Ignore** writes off what is still open on an item (listed under Given away, with an optional note). Inflows from Venmo, Zelle, PayPal and similar are labelled payments; others are labelled refunds or credits. With several categories, rows outside the first are labelled with their category.
+
+Split parts take their payee, and their memo when they have none, from the parent transaction (one extra request when needed).
+
+Matches and ignores are saved **per budget in this browser** and never change YNAB. They are keyed to YNAB transaction ids, so refreshing keeps them. Use **Export backup** and **Import backup** to keep a copy or move to another browser. If a matched transaction leaves the category or changes amount, the page asks you to keep the rest of the match or undo it; until then its amounts count as open. Ignored items that you recategorize in YNAB simply disappear. If a split is edited and its reimbursed part gets a new id, a single part with the same parent and amount takes over the match.
 
 ## Development and deployment
 
@@ -43,6 +51,7 @@ Browser integration checks use fictional YNAB responses and no real token. With 
 
 ```sh
 python tests/browser_smoke.py
+python tests/reimbursements_smoke.py
 ```
 
 `APP_URL`, `CHROMIUM_PATH`, and `SCREENSHOT_DIR` can override the server address, browser executable, and screenshot location. The checks exercise 103 categories, persistence and budget isolation, annual funding, recommendation actions, month exclusions, one-off classifications, income warnings, reports, mobile layouts, and dialog keyboard access. They also compare core visual styles with [the approved design reference](docs/approved-design.html).
