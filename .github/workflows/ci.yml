@@ -8,6 +8,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Installing packages inside Replit can point the lockfile at Replit's
+      # private package mirror, which nothing outside Replit can reach.
+      - name: Check package-lock.json uses the public npm registry
+        run: |
+          if grep -n "package-firewall.replit.internal" package-lock.json; then
+            echo "::error file=package-lock.json::package-lock.json downloads from Replit's private mirror. Replace http://package-firewall.replit.internal/npm/ with https://registry.npmjs.org/ in it."
+            exit 1
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
