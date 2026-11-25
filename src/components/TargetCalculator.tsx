@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from "react";
 import type { Category, CategoryGroup } from "../api/transform";
 import {
+  isOngoing,
   totalPlan,
   type CategoryOverride,
   type CategoryPlan,
@@ -111,10 +112,12 @@ export function TargetCalculator({
     (c.name + " " + g.name)
       .toLowerCase()
       .includes(query.trim().toLowerCase()) && inFilter(c, filter);
-  const ongoing = expenseCategories.filter(
-      (c) => plans[c.id].type !== "oneoff",
-    ),
-    oneOff = expenseCategories.filter((c) => plans[c.id].type === "oneoff");
+  const ongoing = expenseCategories.filter((c) => isOngoing(plans[c.id].type)),
+    oneOff = expenseCategories.filter((c) => plans[c.id].type === "oneoff"),
+    ended = expenseCategories.filter((c) => plans[c.id].type === "ended");
+  // Group-wide changes leave ended categories alone.
+  const notEnded = (cs: Category[]) =>
+    cs.filter((c) => plans[c.id].type !== "ended");
   const listed = expenseGroups
     .map((g) => ({ g, active: ongoing.filter((c) => c.groupId === g.id) }))
     .map((x) => ({ ...x, shown: x.active.filter((c) => matches(c, x.g)) }))
@@ -136,49 +139,63 @@ export function TargetCalculator({
     setOpened(base);
     setAutoOpen(false);
   };
-  const mark = (cs: Category[], oneOffValue: boolean) => {
+  const mark = (cs: Category[], to: "ongoing" | "oneoff" | "ended") => {
     onSetOverrides(
       Object.fromEntries(
         cs.map((c) => [
           c.id,
           {
-            oneOff: oneOffValue,
-            ...(!oneOffValue && overrides[c.id]?.fundingType === "oneoff"
+            ended: to === "ended",
+            ...(to === "ended" ? {} : { oneOff: to === "oneoff" }),
+            ...(to === "ongoing" && overrides[c.id]?.fundingType === "oneoff"
               ? { fundingType: "monthly" as const }
               : {}),
           },
         ]),
       ),
     );
-    if (oneOffValue)
-      setOffOpened((old) => new Set([...old, ...cs.map((c) => c.groupId)]));
-    else setOpened((old) => new Set([...old, ...cs.map((c) => c.groupId)]));
+    const groupIds = cs.map((c) => c.groupId);
+    if (to === "oneoff") setOffOpened((old) => new Set([...old, ...groupIds]));
+    if (to === "ongoing") setOpened((old) => new Set([...old, ...groupIds]));
+    const who = cs.length === 1 ? cs[0].name : `${cs.length} categories`;
     setNotice(
-      `${cs.length === 1 ? cs[0].name : `${cs.length} categories`} ${oneOffValue ? "moved to One-Off. History is preserved." : "returned to the ongoing plan."}`,
+      to === "oneoff"
+        ? `${who} moved to One-Off. History is preserved.`
+        : to === "ended"
+          ? `${who} marked Ended. ${cs.length === 1 ? "It plans" : "They plan"} at $0 from now on and ${cs.length === 1 ? "is" : "are"} listed under Ended.`
+          : `${who} returned to the ongoing plan.`,
     );
   };
   const planAs = (cs: Category[], label: string) => {
-    const off = cs.filter((c) => plans[c.id].type === "oneoff").length,
-      value = off === cs.length ? "oneoff" : off ? "mixed" : "ongoing";
+    if (!cs.length) return null;
+    const types = new Set(
+      cs.map((c) =>
+        isOngoing(plans[c.id].type) ? "ongoing" : plans[c.id].type,
+      ),
+    );
+    const value = types.size === 1 ? [...types][0] : "mixed";
     return (
       <select
         className="plan-type"
         aria-label={`Plan type for ${label}`}
         value={value}
         onChange={(e) => {
-          if (e.target.value !== "mixed") mark(cs, e.target.value === "oneoff");
+          const to = e.target.value;
+          if (to === "ongoing" || to === "oneoff" || to === "ended")
+            mark(cs, to);
         }}
       >
         {value === "mixed" && <option value="mixed">Mixed</option>}
         <option value="ongoing">Ongoing</option>
         <option value="oneoff">One-off</option>
+        <option value="ended">Ended</option>
       </select>
     );
   };
   // The suggestion is the line's amount in the fit plan: its typical month,
   // trimmed only if the whole plan has to come down to fit income.
   const suggestion = (c: Category) =>
-    plans[c.id].type === "oneoff" || plans[c.id].recommendation === null
+    !isOngoing(plans[c.id].type) || plans[c.id].recommendation === null
       ? null
       : (planning.fit.byId[c.id]?.amount ?? plans[c.id].recommendation);
   const apply = (cs: Category[]) => {
@@ -391,8 +408,9 @@ export function TargetCalculator({
             `${totals.missingTargets} categories have no monthly contribution yet. Set an amount in your plan or review their suggestion before treating this plan as complete.`
           ) : (
             <>
-              Choose <b>One-off</b> on a category or group to remove its ongoing
-              allocation. History stays intact.
+              Choose <b>One-off</b> for a past surprise expense, or <b>Ended</b>{" "}
+              for a cancelled subscription. Either removes its ongoing
+              allocation; history stays intact.
             </>
           )}
         </span>
@@ -598,7 +616,11 @@ export function TargetCalculator({
                         </td>
                         <td>
                           {planAs(
-                            expenseCategories.filter((c) => c.groupId === g.id),
+                            notEnded(
+                              expenseCategories.filter(
+                                (c) => c.groupId === g.id,
+                              ),
+                            ),
                             g.name,
                           )}
                         </td>
@@ -725,6 +747,53 @@ export function TargetCalculator({
             review; annual obligations and reserves still need funding. Group
             totals include categories hidden by filters.
           </p>
+          {ended.length > 0 && (
+            <details className="ended-section">
+              <summary>
+                Ended ({ended.length}) · cancelled or finished, planned at $0
+              </summary>
+              <p className="caption">
+                Cancelled subscriptions, paid-off loans and anything else that
+                won’t come back. Whatever their history, they stay out of your
+                plan, the fit plan and One-Off spending. Choose Ongoing or
+                One-off to bring one back.
+              </p>
+              <div className="off-table">
+                <table>
+                  <thead>
+                    <tr>
+                      {["Category", "Recorded spending", "Plan as"].map(
+                        (label) => (
+                          <th scope="col" key={label}>
+                            {label}
+                          </th>
+                        ),
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ended.map((c) => (
+                      <tr key={c.id} className="category">
+                        <td>
+                          <button
+                            className="category-name"
+                            onClick={() => onSelectCategory(c)}
+                          >
+                            {c.name}
+                          </button>
+                          <small>
+                            {groups.find((g) => g.id === c.groupId)?.name ?? ""}
+                          </small>
+                        </td>
+                        <td>{money(plans[c.id].rawTotal)}</td>
+                        <td>{planAs([c], c.name)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          )}
         </>
       )}
       {view === "oneoff" && (
@@ -820,7 +889,11 @@ export function TargetCalculator({
                         <td>No repeat allocation</td>
                         <td>
                           {planAs(
-                            expenseCategories.filter((c) => c.groupId === g.id),
+                            notEnded(
+                              expenseCategories.filter(
+                                (c) => c.groupId === g.id,
+                              ),
+                            ),
                             g.name,
                           )}
                         </td>

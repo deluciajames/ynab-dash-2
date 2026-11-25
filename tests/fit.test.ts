@@ -389,3 +389,20 @@ test("one-off categories are left out of the replay", () => {
   assert.equal(score.covers, 0);
   assert.deepEqual(score.byCategory, {});
 });
+
+test("ended categories are left out of the fit plan and the replay", () => {
+  // A subscription that ran every month until it was cancelled.
+  const sub = category("streaming", Array(12).fill(20)),
+    food = category("food", Array(12).fill(100));
+  const fit = fitToIncome([entry(sub, { ended: true }), entry(food)], {
+    income: 1000,
+    annualReserve: 0,
+    cushion: 0,
+  });
+  assert.equal(fit.byId.streaming, undefined);
+  assert.equal(fit.total, 100);
+  assert.equal(baseAmount(planCategory(sub, { ended: true }, today)), 0);
+  const score = scoreCoverage([line(sub, 0, { ended: true })], 0, dates);
+  assert.equal(score.covers, 0);
+  assert.deepEqual(score.byCategory, {});
+});

@@ -2183,3 +2183,24 @@ dialog {
     align-items: stretch;
   }
 }
+
+/* Ended: cancelled or finished for good */
+.ended-section {
+  margin-top: 18px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 18px;
+}
+.ended-section summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+.ended-section .caption {
+  margin: 10px 0;
+}
+.ended-section .category small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}

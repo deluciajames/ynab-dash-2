@@ -5,7 +5,8 @@ export type FundingType =
   | "annual"
   | "irregular"
   | "savings"
-  | "oneoff";
+  | "oneoff"
+  | "ended";
 export type Priority = "essential" | "flexible";
 export interface CategoryOverride {
   target?: number;
@@ -13,6 +14,9 @@ export interface CategoryOverride {
   fundingType?: FundingType;
   // One-off classification preserves the original funding type and proposed amount for undo.
   oneOff?: boolean;
+  // Ended for good (a cancelled subscription, a paid-off loan): plans at $0
+  // whatever its history, and stays out of One-Off spending.
+  ended?: boolean;
   fixedBill?: boolean;
   excludedMonths?: string[];
   exclusionReasons?: Record<string, string>;
@@ -33,7 +37,11 @@ export const fundingLabels: Record<FundingType, string> = {
   irregular: "Irregular expense",
   savings: "Savings goal",
   oneoff: "One-off",
+  ended: "Ended",
 };
+/** Whether a category still gets a monthly plan (not One-off or Ended). */
+export const isOngoing = (type: FundingType) =>
+  type !== "oneoff" && type !== "ended";
 export const FLOOR_SHARE = 0.5;
 const finiteAmount = (n: number | null | undefined): n is number =>
   typeof n === "number" && Number.isFinite(n) && n >= 0;
@@ -86,6 +94,7 @@ export function fundingType(
   cat: Category,
   ov: CategoryOverride = {},
 ): FundingType {
+  if (ov.ended) return "ended";
   if (ov.oneOff || ov.fundingType === "oneoff") return "oneoff";
   if (ov.fundingType) return ov.fundingType;
   if (cat.hidden && ov.oneOff !== false) return "oneoff";
@@ -196,7 +205,12 @@ export function planCategory(
     explanation = "",
     method = "",
     warning = "";
-  if (type === "oneoff") {
+  if (type === "ended") {
+    need = 0;
+    method = "Ended";
+    explanation =
+      "This category has ended for good. Its history is kept, but it plans at $0 and stays out of One-Off spending.";
+  } else if (type === "oneoff") {
     need = 0;
     method = "No repeat allocation";
     explanation =
@@ -253,9 +267,12 @@ export function planCategory(
   if (need === null && !warning)
     warning = "Review the planning inputs before accepting a recommendation.";
   const recommendation =
-    need === null || type === "oneoff" ? null : Math.ceil(need / 5) * 5;
-  const proposed =
-    type === "oneoff" ? 0 : finiteAmount(ov.target) ? ov.target : current;
+    need === null || !isOngoing(type) ? null : Math.ceil(need / 5) * 5;
+  const proposed = !isOngoing(type)
+    ? 0
+    : finiteAmount(ov.target)
+      ? ov.target
+      : current;
   const discrepancy = need !== null ? current - need : null;
   const priority: Priority =
     ov.priority ??
@@ -299,7 +316,7 @@ export function totalPlan(
   annualReserve: number,
   cushionMonthly = 0,
 ) {
-  const active = plans.filter((p) => p.type !== "oneoff");
+  const active = plans.filter((p) => isOngoing(p.type));
   return {
     total:
       active.reduce((s, p) => s + (p.proposed ?? 0), 0) +

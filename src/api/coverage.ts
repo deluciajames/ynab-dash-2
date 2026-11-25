@@ -1,5 +1,5 @@
 import type { Category } from "./transform";
-import { normalizeMonth, type CategoryPlan } from "./planning.ts";
+import { isOngoing, normalizeMonth, type CategoryPlan } from "./planning.ts";
 
 export interface CoverageLine {
   id: string;
@@ -80,7 +80,7 @@ export function scoreCoverage(
   availableMonths: string[],
 ): CoverageScore {
   const months = [...availableMonths].map(normalizeMonth).sort();
-  const active = lines.filter((l) => l.plan.type !== "oneoff");
+  const active = lines.filter((l) => isOngoing(l.plan.type));
   const byCategory: Record<string, CategoryCoverage> = Object.fromEntries(
     active.map((l) => [l.id, empty()]),
   );

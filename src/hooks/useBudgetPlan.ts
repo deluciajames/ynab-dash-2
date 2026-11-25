@@ -54,9 +54,14 @@ function read(budgetId: string | null): Settings {
           Object.assign(clean, { [key]: candidate[key] });
       if (
         candidate.fundingType &&
-        ["monthly", "annual", "irregular", "savings", "oneoff"].includes(
-          candidate.fundingType,
-        )
+        [
+          "monthly",
+          "annual",
+          "irregular",
+          "savings",
+          "oneoff",
+          "ended",
+        ].includes(candidate.fundingType)
       )
         clean.fundingType = candidate.fundingType;
       if (
@@ -66,6 +71,7 @@ function read(budgetId: string | null): Settings {
         clean.priority = candidate.priority;
       if (typeof candidate.oneOff === "boolean")
         clean.oneOff = candidate.oneOff;
+      if (typeof candidate.ended === "boolean") clean.ended = candidate.ended;
       if (typeof candidate.fixedBill === "boolean")
         clean.fixedBill = candidate.fixedBill;
       if (Array.isArray(candidate.excludedMonths))
