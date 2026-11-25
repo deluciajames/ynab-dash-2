@@ -170,7 +170,11 @@ export function useCloudPreferences(
       (visibleState.status !== "saved" && visibleState.status !== "pending")
     )
       return;
-    if (stableStringify(localSettings) === savedSnapshot.current) return;
+    if (stableStringify(localSettings) === savedSnapshot.current) {
+      // A change was undone before it was saved: nothing is left to save.
+      if (visibleState.status === "pending") setState({ key, status: "saved" });
+      return;
+    }
     if (visibleState.status === "saved") setState({ key, status: "pending" });
     const timer = window.setTimeout(() => {
       setState({ key, status: "saving" });

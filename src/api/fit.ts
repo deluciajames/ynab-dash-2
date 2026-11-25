@@ -1,4 +1,4 @@
-import type { CategoryPlan, Priority } from "./planning.ts";
+import { isOngoing, type CategoryPlan, type Priority } from "./planning.ts";
 import { scoreCoverage, type CoverageLine } from "./coverage.ts";
 
 const roundUp5 = (n: number) => Math.ceil(n / 5 - 1e-9) * 5 || 0;
@@ -13,7 +13,7 @@ export const isVariableLine = (p: CategoryPlan) =>
 // A line's realistic monthly amount before any trimming: the typical month
 // (rounded up to $5), the bill or goal amount, or the exact fixed bill.
 export const baseAmount = (plan: CategoryPlan) =>
-  plan.type === "oneoff"
+  !isOngoing(plan.type)
     ? 0
     : plan.fixedBill
       ? plan.current
@@ -141,7 +141,7 @@ export function fitToIncome(
   options: { income: number | null; annualReserve: number; cushion: number },
 ): FitPlan {
   const lines: FitLine[] = entries
-    .filter(({ plan }) => plan.type !== "oneoff")
+    .filter(({ plan }) => isOngoing(plan.type))
     .map(({ id, plan }) => {
       const base = baseAmount(plan);
       const floor =

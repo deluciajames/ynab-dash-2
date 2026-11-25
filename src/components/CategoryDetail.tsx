@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Category } from "../api/transform";
 import {
   fundingLabels,
+  isOngoing,
   monthLabel,
   normalizeMonth,
   type CategoryOverride,
@@ -43,7 +44,7 @@ export function CategoryDetail({
   const overspentMonths = actual.filter((m) => m.overspent).length,
     movedOutMonths = actual.filter((m) => m.movedOut).length;
   const suggestion =
-    plan.type === "oneoff" || plan.recommendation === null
+    !isOngoing(plan.type) || plan.recommendation === null
       ? null
       : (fitAmount ?? plan.recommendation);
   const coverageText = (amount: number, c?: CategoryCoverage) =>
@@ -143,9 +144,11 @@ export function CategoryDetail({
           onChange={(e) => {
             const type = e.target.value as FundingType;
             onChange(
-              type === "oneoff"
-                ? { oneOff: true }
-                : { fundingType: type, oneOff: false },
+              type === "ended"
+                ? { ended: true }
+                : type === "oneoff"
+                  ? { oneOff: true, ended: false }
+                  : { fundingType: type, oneOff: false, ended: false },
             );
           }}
         >
@@ -194,7 +197,7 @@ export function CategoryDetail({
             This is a known fixed bill
           </label>
         )}
-        {plan.type !== "oneoff" && (
+        {isOngoing(plan.type) && (
           <div className="goal-inputs priority-inputs">
             <label>
               When the plan is over income
@@ -230,7 +233,7 @@ export function CategoryDetail({
             )}
           </div>
         )}
-        {plan.type !== "oneoff" && !plan.currentSet && (
+        {isOngoing(plan.type) && !plan.currentSet && (
           <div className="goal-inputs">
             <label>
               Monthly target (none set in YNAB)
@@ -304,7 +307,7 @@ export function CategoryDetail({
             </div>
           )}
       </div>
-      {plan.type !== "oneoff" && (yourCoverage || fitCoverage) && (
+      {isOngoing(plan.type) && (yourCoverage || fitCoverage) && (
         <div className="coverage-box">
           <strong>How often would this line need covering?</strong>
           <p>
@@ -356,7 +359,7 @@ export function CategoryDetail({
         {plan.type === "monthly" && (
           <span style={{ color: "#8a9690" }}>■ Excluded from planning</span>
         )}
-        {plan.type !== "oneoff" && (
+        {isOngoing(plan.type) && (
           <>
             <span style={{ color: "#a2633e" }}>– – YNAB target</span>
             <span style={{ color: "#236d59" }}>··· Your plan</span>
@@ -421,9 +424,11 @@ export function CategoryDetail({
         </details>
       ) : (
         <p id="exclusion-unavailable">
-          {plan.type === "oneoff"
-            ? "Historical spending is retained; the entire category is excluded from ongoing targets."
-            : "Month exclusions are for ordinary monthly spending. Annual and irregular funding use expected costs instead, so a bill month cannot silently disappear."}
+          {plan.type === "ended"
+            ? "This category has ended for good. Its history is kept, but it plans at $0 and stays out of One-Off spending."
+            : plan.type === "oneoff"
+              ? "Historical spending is retained; the entire category is excluded from ongoing targets."
+              : "Month exclusions are for ordinary monthly spending. Annual and irregular funding use expected costs instead, so a bill month cannot silently disappear."}
         </p>
       )}
       <details className="chart-values">
@@ -472,11 +477,11 @@ export function CategoryDetail({
         </table>
       </details>
       <p className="history-note">
-        {plan.type === "oneoff"
+        {!isOngoing(plan.type)
           ? `Recorded spending in the loaded history: ${money(plan.rawTotal)}. No repeat monthly allocation.`
           : "Target vs. need = YNAB target − estimated monthly need. A positive amount is a review opportunity; money already saved for obligations remains committed."}
       </p>
-      {plan.type !== "oneoff" && (
+      {isOngoing(plan.type) && (
         <button
           className="apply"
           disabled={suggestion === null || plan.proposed === suggestion}

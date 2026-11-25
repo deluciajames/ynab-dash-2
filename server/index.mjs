@@ -88,7 +88,7 @@ function validOverride(value) {
   }
   if (
     value.fundingType !== undefined &&
-    !["monthly", "annual", "irregular", "savings", "oneoff"].includes(
+    !["monthly", "annual", "irregular", "savings", "oneoff", "ended"].includes(
       value.fundingType,
     )
   )
@@ -100,6 +100,7 @@ function validOverride(value) {
     return false;
   if (
     (value.oneOff !== undefined && typeof value.oneOff !== "boolean") ||
+    (value.ended !== undefined && typeof value.ended !== "boolean") ||
     (value.fixedBill !== undefined && typeof value.fixedBill !== "boolean") ||
     (value.dueDate !== undefined &&
       typeof value.dueDate !== "string" &&
@@ -129,7 +130,7 @@ function validOverride(value) {
     )
       return false;
   }
-  return Object.keys(value).length <= 14;
+  return Object.keys(value).length <= 15;
 }
 
 function validSettings(value) {

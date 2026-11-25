@@ -1,6 +1,8 @@
 import { Fragment, useMemo, useState } from "react";
 import type { Category, CategoryGroup } from "../api/transform";
 import {
+  currentContribution,
+  isOngoing,
   totalPlan,
   type CategoryOverride,
   type CategoryPlan,
@@ -34,6 +36,7 @@ interface Props {
 }
 type Filter = "all" | "attention" | "need" | "room" | "unset" | "fit";
 type View = "categories" | "fit" | "oneoff";
+const SHOW_ALL_KEY = "ynab_show_all_categories";
 export function TargetCalculator({
   categories,
   groups,
@@ -57,6 +60,27 @@ export function TargetCalculator({
   const [opened, setOpened] = useState<Set<string>>(new Set()),
     [offOpened, setOffOpened] = useState<Set<string>>(new Set());
   const [view, setView] = useState<View>("categories");
+  // null until the person opens or closes it; it starts open when an ended
+  // category still has a target or money in YNAB.
+  const [endedOpen, setEndedOpen] = useState<boolean | null>(null);
+  // Show every YNAB category in the table, including Ended and One-off ones.
+  // Remembered in this browser only; it is a viewing preference.
+  const [showAll, setShowAll] = useState(() => {
+    try {
+      return localStorage.getItem(SHOW_ALL_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const changeShowAll = (value: boolean) => {
+    setShowAll(value);
+    setAutoOpen(true);
+    try {
+      localStorage.setItem(SHOW_ALL_KEY, value ? "1" : "0");
+    } catch {
+      // Storage unavailable; the choice lasts for this visit.
+    }
+  };
   const [filter, setFilter] = useState<Filter>("all"),
     [query, setQuery] = useState(""),
     [autoOpen, setAutoOpen] = useState(true),
@@ -97,6 +121,8 @@ export function TargetCalculator({
   );
   const inFilter = (c: Category, f: Filter) => {
     const p = plans[c.id];
+    // Ended and One-off categories only appear in the unfiltered view.
+    if (!isOngoing(p.type)) return f === "all";
     return f === "all"
       ? true
       : f === "attention"
@@ -111,14 +137,36 @@ export function TargetCalculator({
     (c.name + " " + g.name)
       .toLowerCase()
       .includes(query.trim().toLowerCase()) && inFilter(c, filter);
-  const ongoing = expenseCategories.filter(
-      (c) => plans[c.id].type !== "oneoff",
-    ),
-    oneOff = expenseCategories.filter((c) => plans[c.id].type === "oneoff");
+  const ongoing = expenseCategories.filter((c) => isOngoing(plans[c.id].type)),
+    oneOff = expenseCategories.filter((c) => plans[c.id].type === "oneoff"),
+    ended = expenseCategories.filter((c) => plans[c.id].type === "ended");
+  // What an ended category still holds in YNAB: a target that keeps asking
+  // for money each month, and money already sitting in it. Both can be
+  // moved to other categories.
+  const leftover = (c: Category) => ({
+    target: (c.ynabTarget ?? 0) > 0,
+    monthly: (c.ynabTarget ?? 0) > 0 ? currentContribution(c) : null,
+    available: Math.max(0, c.balance),
+  });
+  const cleanup = ended.filter((c) => {
+    const l = leftover(c);
+    return l.target || l.available > 0;
+  });
+  // Group-wide changes leave ended categories alone.
+  const notEnded = (cs: Category[]) =>
+    cs.filter((c) => plans[c.id].type !== "ended");
+  const pool = showAll ? expenseCategories : ongoing;
   const listed = expenseGroups
     .map((g) => ({ g, active: ongoing.filter((c) => c.groupId === g.id) }))
-    .map((x) => ({ ...x, shown: x.active.filter((c) => matches(c, x.g)) }))
+    .map((x) => ({
+      ...x,
+      shown: pool.filter((c) => c.groupId === x.g.id && matches(c, x.g)),
+    }))
     .filter((x) => x.shown.length);
+  const inactiveShown = listed.reduce(
+    (s, x) => s + x.shown.filter((c) => !isOngoing(plans[c.id].type)).length,
+    0,
+  );
   const toggle = (id: string, off = false) => {
     if (off) {
       setOffOpened((old) => {
@@ -136,49 +184,63 @@ export function TargetCalculator({
     setOpened(base);
     setAutoOpen(false);
   };
-  const mark = (cs: Category[], oneOffValue: boolean) => {
+  const mark = (cs: Category[], to: "ongoing" | "oneoff" | "ended") => {
     onSetOverrides(
       Object.fromEntries(
         cs.map((c) => [
           c.id,
           {
-            oneOff: oneOffValue,
-            ...(!oneOffValue && overrides[c.id]?.fundingType === "oneoff"
+            ended: to === "ended",
+            ...(to === "ended" ? {} : { oneOff: to === "oneoff" }),
+            ...(to === "ongoing" && overrides[c.id]?.fundingType === "oneoff"
               ? { fundingType: "monthly" as const }
               : {}),
           },
         ]),
       ),
     );
-    if (oneOffValue)
-      setOffOpened((old) => new Set([...old, ...cs.map((c) => c.groupId)]));
-    else setOpened((old) => new Set([...old, ...cs.map((c) => c.groupId)]));
+    const groupIds = cs.map((c) => c.groupId);
+    if (to === "oneoff") setOffOpened((old) => new Set([...old, ...groupIds]));
+    if (to === "ongoing") setOpened((old) => new Set([...old, ...groupIds]));
+    const who = cs.length === 1 ? cs[0].name : `${cs.length} categories`;
     setNotice(
-      `${cs.length === 1 ? cs[0].name : `${cs.length} categories`} ${oneOffValue ? "moved to One-Off. History is preserved." : "returned to the ongoing plan."}`,
+      to === "oneoff"
+        ? `${who} moved to One-Off. History is preserved.`
+        : to === "ended"
+          ? `${who} marked Ended. ${cs.length === 1 ? "It plans" : "They plan"} at $0 from now on and ${cs.length === 1 ? "is" : "are"} listed under Ended.`
+          : `${who} returned to the ongoing plan.`,
     );
   };
   const planAs = (cs: Category[], label: string) => {
-    const off = cs.filter((c) => plans[c.id].type === "oneoff").length,
-      value = off === cs.length ? "oneoff" : off ? "mixed" : "ongoing";
+    if (!cs.length) return null;
+    const types = new Set(
+      cs.map((c) =>
+        isOngoing(plans[c.id].type) ? "ongoing" : plans[c.id].type,
+      ),
+    );
+    const value = types.size === 1 ? [...types][0] : "mixed";
     return (
       <select
         className="plan-type"
         aria-label={`Plan type for ${label}`}
         value={value}
         onChange={(e) => {
-          if (e.target.value !== "mixed") mark(cs, e.target.value === "oneoff");
+          const to = e.target.value;
+          if (to === "ongoing" || to === "oneoff" || to === "ended")
+            mark(cs, to);
         }}
       >
         {value === "mixed" && <option value="mixed">Mixed</option>}
         <option value="ongoing">Ongoing</option>
         <option value="oneoff">One-off</option>
+        <option value="ended">Ended</option>
       </select>
     );
   };
   // The suggestion is the line's amount in the fit plan: its typical month,
   // trimmed only if the whole plan has to come down to fit income.
   const suggestion = (c: Category) =>
-    plans[c.id].type === "oneoff" || plans[c.id].recommendation === null
+    !isOngoing(plans[c.id].type) || plans[c.id].recommendation === null
       ? null
       : (planning.fit.byId[c.id]?.amount ?? plans[c.id].recommendation);
   const apply = (cs: Category[]) => {
@@ -229,6 +291,22 @@ export function TargetCalculator({
       ? values.reduce((s, p) => s + p.proposed!, 0)
       : null;
     return { need, current, proposed };
+  };
+  const stillInYnab = (c: Category) => {
+    const l = leftover(c),
+      parts = [
+        l.target
+          ? l.monthly !== null
+            ? `Target ${money(l.monthly)}/mo`
+            : "Target set"
+          : "",
+        l.available > 0 ? `${money(l.available)} available` : "",
+      ].filter(Boolean);
+    return parts.length ? (
+      <span className="short">{parts.join(" · ")}</span>
+    ) : (
+      <span className="pending">Cleared</span>
+    );
   };
   const applyFitPlan = () => {
     apply(ongoing);
@@ -391,8 +469,9 @@ export function TargetCalculator({
             `${totals.missingTargets} categories have no monthly contribution yet. Set an amount in your plan or review their suggestion before treating this plan as complete.`
           ) : (
             <>
-              Choose <b>One-off</b> on a category or group to remove its ongoing
-              allocation. History stays intact.
+              Choose <b>One-off</b> for a past surprise expense, or <b>Ended</b>{" "}
+              for a cancelled subscription. Either removes its ongoing
+              allocation; history stays intact.
             </>
           )}
         </span>
@@ -434,7 +513,9 @@ export function TargetCalculator({
       {view === "categories" && (
         <>
           <div className="toolbar">
-            <h2>Ongoing category groups</h2>
+            <h2>
+              {showAll ? "All category groups" : "Ongoing category groups"}
+            </h2>
             <div className="filters" aria-label="Filter categories">
               {(
                 [
@@ -495,10 +576,19 @@ export function TargetCalculator({
             >
               Expand shown groups
             </button>
+            <label className="show-all">
+              <input
+                type="checkbox"
+                checked={showAll}
+                onChange={(e) => changeShowAll(e.target.checked)}
+              />
+              Include Ended and One-off
+            </label>
             <span className="counts">
               {listed.length} {listed.length === 1 ? "group" : "groups"} ·{" "}
-              {listed.reduce((s, x) => s + x.shown.length, 0)} of{" "}
-              {ongoing.length} ongoing categories
+              {listed.reduce((s, x) => s + x.shown.length, 0) - inactiveShown}{" "}
+              of {ongoing.length} ongoing categories
+              {inactiveShown > 0 && ` · ${inactiveShown} Ended or One-off`}
             </span>
           </div>
           {filter === "unset" && unsetStrip()}
@@ -598,7 +688,11 @@ export function TargetCalculator({
                         </td>
                         <td>
                           {planAs(
-                            expenseCategories.filter((c) => c.groupId === g.id),
+                            notEnded(
+                              expenseCategories.filter(
+                                (c) => c.groupId === g.id,
+                              ),
+                            ),
                             g.name,
                           )}
                         </td>
@@ -607,6 +701,47 @@ export function TargetCalculator({
                         shown.map((c) => {
                           const p = plans[c.id],
                             k = kind(p);
+                          if (!isOngoing(p.type))
+                            return (
+                              <tr key={c.id} className="category inactive">
+                                <td>
+                                  <button
+                                    className="category-name"
+                                    onClick={() => onSelectCategory(c)}
+                                  >
+                                    {c.name}
+                                  </button>
+                                  <span className={`purpose ${p.type}`}>
+                                    {p.type === "ended" ? "Ended" : "One-off"}
+                                  </span>
+                                </td>
+                                <td>—</td>
+                                <td>
+                                  {p.type === "ended" && leftover(c).target ? (
+                                    <span
+                                      className="short"
+                                      title="Still set in YNAB. Remove it there to free this money."
+                                    >
+                                      {stillInYnab(c)}
+                                    </span>
+                                  ) : p.currentSet ? (
+                                    money(p.current)
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                                <td>—</td>
+                                <td>{money(0)}</td>
+                                <td>
+                                  <span className="pending">
+                                    {p.type === "ended"
+                                      ? "Planned at $0"
+                                      : "Covered by the reserve"}
+                                  </span>
+                                </td>
+                                <td>{planAs([c], c.name)}</td>
+                              </tr>
+                            );
                           return (
                             <tr key={c.id} className="category">
                               <td>
@@ -725,6 +860,103 @@ export function TargetCalculator({
             review; annual obligations and reserves still need funding. Group
             totals include categories hidden by filters.
           </p>
+          {ended.length > 0 && (
+            <details
+              className="ended-section"
+              open={endedOpen ?? cleanup.length > 0}
+              onToggle={(e) => setEndedOpen(e.currentTarget.open)}
+            >
+              <summary>
+                Ended ({ended.length}) · cancelled or finished, planned at $0
+                {cleanup.length > 0 && (
+                  <span className="short">
+                    {" "}
+                    · {cleanup.length} still set up in YNAB
+                  </span>
+                )}
+              </summary>
+              <p className="caption">
+                Cancelled subscriptions, paid-off loans and anything else that
+                won’t come back. Whatever their history, they stay out of your
+                plan, the fit plan and One-Off spending. Choose Ongoing or
+                One-off to bring one back.
+              </p>
+              {cleanup.length > 0 && (
+                <p className="filter-strip warning-notice">
+                  <span>
+                    <strong>
+                      {cleanup.length === 1
+                        ? "1 ended category still has"
+                        : `${cleanup.length} ended categories still have`}{" "}
+                      {[
+                        cleanup.some((c) => leftover(c).target)
+                          ? (() => {
+                              const monthly = cleanup.reduce(
+                                (s, c) => s + (leftover(c).monthly ?? 0),
+                                0,
+                              );
+                              return monthly > 0
+                                ? cleanup.filter((c) => leftover(c).target)
+                                    .length === 1
+                                  ? `a ${money(monthly)}/mo YNAB target`
+                                  : `${money(monthly)}/mo of YNAB targets`
+                                : "a YNAB target";
+                            })()
+                          : "",
+                        cleanup.some((c) => leftover(c).available > 0)
+                          ? `${money(cleanup.reduce((s, c) => s + leftover(c).available, 0))} available`
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" and ")}
+                    </strong>
+                    <small>
+                      Remove the target in YNAB and move what’s left to another
+                      category to put that money back to work.
+                    </small>
+                  </span>
+                </p>
+              )}
+              <div className="off-table">
+                <table>
+                  <thead>
+                    <tr>
+                      {[
+                        "Category",
+                        "Recorded spending",
+                        "Still in YNAB",
+                        "Plan as",
+                      ].map((label) => (
+                        <th scope="col" key={label}>
+                          {label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ended.map((c) => (
+                      <tr key={c.id} className="category">
+                        <td>
+                          <button
+                            className="category-name"
+                            onClick={() => onSelectCategory(c)}
+                          >
+                            {c.name}
+                          </button>
+                          <small>
+                            {groups.find((g) => g.id === c.groupId)?.name ?? ""}
+                          </small>
+                        </td>
+                        <td>{money(plans[c.id].rawTotal)}</td>
+                        <td>{stillInYnab(c)}</td>
+                        <td>{planAs([c], c.name)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          )}
         </>
       )}
       {view === "oneoff" && (
@@ -820,7 +1052,11 @@ export function TargetCalculator({
                         <td>No repeat allocation</td>
                         <td>
                           {planAs(
-                            expenseCategories.filter((c) => c.groupId === g.id),
+                            notEnded(
+                              expenseCategories.filter(
+                                (c) => c.groupId === g.id,
+                              ),
+                            ),
                             g.name,
                           )}
                         </td>
