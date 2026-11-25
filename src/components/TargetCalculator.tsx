@@ -632,9 +632,14 @@ export function TargetCalculator({
               </thead>
               <tbody>
                 {listed.map(({ g, active, shown }) => {
-                  const t = groupTotals(active),
+                  // Totals and the group's Use suggestions follow the filter
+                  // and search: they cover the ongoing rows you can see.
+                  const visible = shown.filter((c) =>
+                      isOngoing(plans[c.id].type),
+                    ),
+                    t = groupTotals(visible),
                     expanded = (filtering && autoOpen) || opened.has(g.id),
-                    eligible = active.filter((c) => suggestion(c) !== null),
+                    eligible = visible.filter((c) => suggestion(c) !== null),
                     done = eligible.every(
                       (c) => suggestion(c) === plans[c.id].proposed,
                     );
@@ -653,7 +658,11 @@ export function TargetCalculator({
                             </span>
                             <span>
                               {g.name}{" "}
-                              <span className="groupmeta">{active.length}</span>
+                              <span className="groupmeta">
+                                {visible.length === active.length
+                                  ? active.length
+                                  : `${visible.length} of ${active.length}`}
+                              </span>
                             </span>
                           </button>
                         </td>
@@ -677,13 +686,19 @@ export function TargetCalculator({
                               className="apply"
                               disabled={done}
                               aria-label={`Apply recommendations for ${g.name}`}
-                              title="Applies to all ongoing categories in this group, including those hidden by filters"
-                              onClick={() => apply(active)}
+                              title={
+                                visible.length === active.length
+                                  ? "Applies to every ongoing category in this group"
+                                  : `Applies to the ${visible.length} categories shown; categories hidden by the filter or search are left as they are`
+                              }
+                              onClick={() => apply(visible)}
                             >
                               {done ? "Applied" : "Use suggestions"}
                             </button>
                           ) : (
-                            <span className="pending">Review inputs</span>
+                            visible.length > 0 && (
+                              <span className="pending">Review inputs</span>
+                            )
                           )}
                         </td>
                         <td>
@@ -858,7 +873,8 @@ export function TargetCalculator({
             purpose; target vs. need = YNAB target − estimated need. Your plan
             is a sandbox that never changes YNAB. Positive amounts warrant
             review; annual obligations and reserves still need funding. Group
-            totals include categories hidden by filters.
+            totals add up the categories shown, so they follow the filter and
+            search.
           </p>
           {ended.length > 0 && (
             <details

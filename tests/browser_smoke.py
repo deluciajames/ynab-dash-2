@@ -264,6 +264,9 @@ with sync_playwright() as p:
     page.get_by_role('button',name='No target set',exact=True).click()
     expect(page.locator('.filter-strip')).to_contain_text('1 category has no YNAB target · it needs about')
     assert page.locator('.tablebox tr.category').count()==1
+    # Group totals follow the filter: Home shows only Storage's numbers.
+    expect(page.locator('.tablebox tr.group')).to_contain_text('Home 1 of 10')
+    assert page.locator('.tablebox tr.group td').nth(1).inner_text()==page.locator('.tablebox tr.category td').nth(1).inner_text().split('\n')[0]
     expect(page.locator('.tablebox').get_by_role('button',name='Storage',exact=True)).to_be_visible()
     page.screenshot(path=str(ARTIFACTS/'application-no-target.png'),full_page=True)
     # An ended category is never asked for a target.

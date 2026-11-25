@@ -257,7 +257,7 @@ export function planCategory(
     }
     method = ov.fixedBill
       ? "Fixed bill"
-      : `${included.length} months${history.length !== included.length ? ` · ${history.length - included.length} excluded` : ""}`;
+      : `${included.length} ${included.length === 1 ? "month" : "months"}${history.length !== included.length ? ` · ${history.length - included.length} excluded` : ""}`;
     explanation = ov.fixedBill
       ? "Keep the known fixed bill amount. History exclusions do not change the cost of the bill."
       : "Your typical month: the average of the included months. Higher months are covered by the shared cushion, not by padding this line. Suggestions round up to $5.";
