@@ -2204,3 +2204,19 @@ dialog {
   color: var(--muted);
   font-size: 11px;
 }
+
+/* Include Ended and One-off: every YNAB category in the table */
+.show-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.tablebox tr.inactive td {
+  color: var(--muted);
+}
+.tablebox tr.inactive .category-name {
+  color: var(--muted);
+}

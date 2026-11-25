@@ -157,6 +157,20 @@ with sync_playwright() as p:
     expect(page.locator('#total')).to_have_text('$11,175')
     expect(page.locator('.ended-section summary')).to_contain_text('Ended (1)')
     expect(page.locator('.tablebox').get_by_role('button',name='Groceries',exact=True)).to_have_count(0)
+    # Include Ended and One-off shows every YNAB category, without changing the plan.
+    page.get_by_label('Include Ended and One-off').check()
+    expect(page.locator('.tablebox tr.inactive').filter(has_text='Groceries')).to_contain_text('Ended')
+    expect(page.locator('.counts')).to_contain_text('99 of 99 ongoing categories · 4 Ended or One-off')
+    expect(page.locator('#total')).to_have_text('$11,175')
+    page.get_by_role('button',name='Expand shown groups',exact=True).click()
+    page.screenshot(path=str(ARTIFACTS/'application-show-all.png'),full_page=True)
+    page.locator('.tablebox tr.inactive').filter(has_text='Groceries').screenshot(path=str(ARTIFACTS/'show-all-ended-row.png'))
+    page.get_by_role('button',name='Collapse all',exact=True).click()
+    page.get_by_role('button',name='Needs more',exact=True).click()
+    expect(page.locator('.tablebox tr.inactive')).to_have_count(0)
+    page.get_by_role('button',name='All',exact=True).click()
+    page.get_by_label('Include Ended and One-off').uncheck()
+    expect(page.locator('.tablebox tr.inactive')).to_have_count(0)
     page.get_by_role('tab',name='One-Off').click()
     expect(page.locator('.oneoff-section').get_by_role('button',name='Groceries',exact=True)).to_have_count(0)
     page.get_by_role('tab',name='Categories').click()
@@ -265,5 +279,5 @@ with sync_playwright() as p:
     page.screenshot(path=str(ARTIFACTS/'application-fit-filter.png'))
     assert not errors,errors
     assert not writes,writes
-    print('Browser checks passed: 103 categories, plan tabs, no-target and fit filters, annual funding, chart scales/labels, persisted exclusions/reasons, one-off moves/restores, Ended status, group recommendations, reset, reserve, income warnings, blank contributions as $0, reports, budget isolation, mobile and keyboard dialog close. No YNAB writes.')
+    print('Browser checks passed: 103 categories, plan tabs, no-target and fit filters, annual funding, chart scales/labels, persisted exclusions/reasons, one-off moves/restores, Ended status and show-all toggle, group recommendations, reset, reserve, income warnings, blank contributions as $0, reports, budget isolation, mobile and keyboard dialog close. No YNAB writes.')
     browser.close()

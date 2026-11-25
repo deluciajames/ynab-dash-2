@@ -36,6 +36,7 @@ interface Props {
 }
 type Filter = "all" | "attention" | "need" | "room" | "unset" | "fit";
 type View = "categories" | "fit" | "oneoff";
+const SHOW_ALL_KEY = "ynab_show_all_categories";
 export function TargetCalculator({
   categories,
   groups,
@@ -62,6 +63,24 @@ export function TargetCalculator({
   // null until the person opens or closes it; it starts open when an ended
   // category still has a target or money in YNAB.
   const [endedOpen, setEndedOpen] = useState<boolean | null>(null);
+  // Show every YNAB category in the table, including Ended and One-off ones.
+  // Remembered in this browser only; it is a viewing preference.
+  const [showAll, setShowAll] = useState(() => {
+    try {
+      return localStorage.getItem(SHOW_ALL_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const changeShowAll = (value: boolean) => {
+    setShowAll(value);
+    setAutoOpen(true);
+    try {
+      localStorage.setItem(SHOW_ALL_KEY, value ? "1" : "0");
+    } catch {
+      // Storage unavailable; the choice lasts for this visit.
+    }
+  };
   const [filter, setFilter] = useState<Filter>("all"),
     [query, setQuery] = useState(""),
     [autoOpen, setAutoOpen] = useState(true),
@@ -102,6 +121,8 @@ export function TargetCalculator({
   );
   const inFilter = (c: Category, f: Filter) => {
     const p = plans[c.id];
+    // Ended and One-off categories only appear in the unfiltered view.
+    if (!isOngoing(p.type)) return f === "all";
     return f === "all"
       ? true
       : f === "attention"
@@ -134,10 +155,18 @@ export function TargetCalculator({
   // Group-wide changes leave ended categories alone.
   const notEnded = (cs: Category[]) =>
     cs.filter((c) => plans[c.id].type !== "ended");
+  const pool = showAll ? expenseCategories : ongoing;
   const listed = expenseGroups
     .map((g) => ({ g, active: ongoing.filter((c) => c.groupId === g.id) }))
-    .map((x) => ({ ...x, shown: x.active.filter((c) => matches(c, x.g)) }))
+    .map((x) => ({
+      ...x,
+      shown: pool.filter((c) => c.groupId === x.g.id && matches(c, x.g)),
+    }))
     .filter((x) => x.shown.length);
+  const inactiveShown = listed.reduce(
+    (s, x) => s + x.shown.filter((c) => !isOngoing(plans[c.id].type)).length,
+    0,
+  );
   const toggle = (id: string, off = false) => {
     if (off) {
       setOffOpened((old) => {
@@ -484,7 +513,9 @@ export function TargetCalculator({
       {view === "categories" && (
         <>
           <div className="toolbar">
-            <h2>Ongoing category groups</h2>
+            <h2>
+              {showAll ? "All category groups" : "Ongoing category groups"}
+            </h2>
             <div className="filters" aria-label="Filter categories">
               {(
                 [
@@ -545,10 +576,19 @@ export function TargetCalculator({
             >
               Expand shown groups
             </button>
+            <label className="show-all">
+              <input
+                type="checkbox"
+                checked={showAll}
+                onChange={(e) => changeShowAll(e.target.checked)}
+              />
+              Include Ended and One-off
+            </label>
             <span className="counts">
               {listed.length} {listed.length === 1 ? "group" : "groups"} ·{" "}
-              {listed.reduce((s, x) => s + x.shown.length, 0)} of{" "}
-              {ongoing.length} ongoing categories
+              {listed.reduce((s, x) => s + x.shown.length, 0) - inactiveShown}{" "}
+              of {ongoing.length} ongoing categories
+              {inactiveShown > 0 && ` · ${inactiveShown} Ended or One-off`}
             </span>
           </div>
           {filter === "unset" && unsetStrip()}
@@ -661,6 +701,47 @@ export function TargetCalculator({
                         shown.map((c) => {
                           const p = plans[c.id],
                             k = kind(p);
+                          if (!isOngoing(p.type))
+                            return (
+                              <tr key={c.id} className="category inactive">
+                                <td>
+                                  <button
+                                    className="category-name"
+                                    onClick={() => onSelectCategory(c)}
+                                  >
+                                    {c.name}
+                                  </button>
+                                  <span className={`purpose ${p.type}`}>
+                                    {p.type === "ended" ? "Ended" : "One-off"}
+                                  </span>
+                                </td>
+                                <td>—</td>
+                                <td>
+                                  {p.type === "ended" && leftover(c).target ? (
+                                    <span
+                                      className="short"
+                                      title="Still set in YNAB. Remove it there to free this money."
+                                    >
+                                      {stillInYnab(c)}
+                                    </span>
+                                  ) : p.currentSet ? (
+                                    money(p.current)
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                                <td>—</td>
+                                <td>{money(0)}</td>
+                                <td>
+                                  <span className="pending">
+                                    {p.type === "ended"
+                                      ? "Planned at $0"
+                                      : "Covered by the reserve"}
+                                  </span>
+                                </td>
+                                <td>{planAs([c], c.name)}</td>
+                              </tr>
+                            );
                           return (
                             <tr key={c.id} className="category">
                               <td>
