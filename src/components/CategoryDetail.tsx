@@ -11,11 +11,16 @@ import {
 import { AmountInput } from "./AmountInput";
 import { SpendingChart } from "./SpendingChart";
 import { money } from "../lib/money";
+import { actualHistory, type CategoryCoverage } from "../api/coverage";
 
 interface Props {
   category: Category;
   groupName: string;
   plan: CategoryPlan;
+  fitAmount: number | null;
+  yourCoverage?: CategoryCoverage;
+  fitCoverage?: CategoryCoverage;
+  coverageMonths: number;
   override: CategoryOverride;
   onChange: (change: Partial<CategoryOverride>) => void;
   onClose: () => void;
@@ -24,10 +29,35 @@ export function CategoryDetail({
   category,
   groupName,
   plan,
+  fitAmount,
+  yourCoverage,
+  fitCoverage,
+  coverageMonths,
   override,
   onChange,
   onClose,
 }: Props) {
+  const actual = actualHistory(category);
+  const actualByMonth = new Map(actual.map((m) => [m.month, m]));
+  const hasActual = actual.some((m) => m.endBalance !== null);
+  const overspentMonths = actual.filter((m) => m.overspent).length,
+    movedOutMonths = actual.filter((m) => m.movedOut).length;
+  const suggestion =
+    plan.type === "oneoff" || plan.recommendation === null
+      ? null
+      : (fitAmount ?? plan.recommendation);
+  const coverageText = (amount: number, c?: CategoryCoverage) =>
+    !c
+      ? ""
+      : `${money(amount)}/mo: ${
+          c.shortMonths
+            ? `ran short in ${c.shortMonths} of ${coverageMonths} months (worst ${money(c.worstShort)})`
+            : `never ran short in ${coverageMonths} months`
+        }${
+          c.donorTimes
+            ? `; covered other categories ${c.donorTimes} ${c.donorTimes === 1 ? "time" : "times"}`
+            : ""
+        }.`;
   const dialog = useRef<HTMLDialogElement>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [notice, setNotice] = useState("");
@@ -164,6 +194,42 @@ export function CategoryDetail({
             This is a known fixed bill
           </label>
         )}
+        {plan.type !== "oneoff" && (
+          <div className="goal-inputs priority-inputs">
+            <label>
+              When the plan is over income
+              <select
+                aria-label="When the plan is over income"
+                value={plan.priority}
+                onChange={(e) =>
+                  onChange({
+                    priority: e.target.value as "essential" | "flexible",
+                  })
+                }
+              >
+                <option value="essential">Essential: never trim</option>
+                <option value="flexible">Flexible: can be trimmed</option>
+              </select>
+            </label>
+            {plan.priority === "flexible" && (
+              <label>
+                Least you’d accept per month
+                <AmountInput
+                  value={plan.floor}
+                  label="Least you’d accept per month"
+                  nullable
+                  onCommit={(floor) => onChange({ floor })}
+                />
+                {!plan.floorSet && (
+                  <small className="goal-field-hint">
+                    Default: half your typical month. Clear it to go back to the
+                    default.
+                  </small>
+                )}
+              </label>
+            )}
+          </div>
+        )}
         {plan.type !== "oneoff" && !plan.currentSet && (
           <div className="goal-inputs">
             <label>
@@ -227,7 +293,55 @@ export function CategoryDetail({
           Estimated need
           <strong>{plan.need === null ? "Review" : money(plan.need)}</strong>
         </div>
+        {plan.type === "monthly" &&
+          !override.fixedBill &&
+          plan.standaloneNeed !== null &&
+          plan.need !== null &&
+          plan.standaloneNeed > plan.need + 0.5 && (
+            <div title="The level three out of four included months fall below. The shared cushion covers months above your typical one.">
+              Bad-month level
+              <strong>{money(plan.standaloneNeed)}</strong>
+            </div>
+          )}
       </div>
+      {plan.type !== "oneoff" && (yourCoverage || fitCoverage) && (
+        <div className="coverage-box">
+          <strong>How often would this line need covering?</strong>
+          <p>
+            Replaying the last {coverageMonths} months with rollover, covering
+            shortfalls from the shared cushion first:
+          </p>
+          <ul>
+            {yourCoverage && (
+              <li>
+                Your plan, {coverageText(plan.proposed ?? 0, yourCoverage)}
+              </li>
+            )}
+            {fitCoverage && suggestion !== null && (
+              <li>Fit plan, {coverageText(suggestion, fitCoverage)}</li>
+            )}
+          </ul>
+          {hasActual && (overspentMonths > 0 || movedOutMonths > 0) && (
+            <p>
+              In YNAB:{" "}
+              {[
+                overspentMonths
+                  ? `ended ${overspentMonths} ${overspentMonths === 1 ? "month" : "months"} overspent`
+                  : "",
+                movedOutMonths
+                  ? `money was moved out in ${movedOutMonths} ${movedOutMonths === 1 ? "month" : "months"}`
+                  : "",
+              ]
+                .filter(Boolean)
+                .join("; ")}
+              .
+            </p>
+          )}
+          {plan.availableBalance > 0 && (
+            <p>Available in YNAB now: {money(plan.availableBalance)}.</p>
+          )}
+        </div>
+      )}
       <div className="chart-heading">
         <strong>Monthly spending</strong>
         <span>
@@ -319,6 +433,8 @@ export function CategoryDetail({
             <tr>
               <th scope="col">Month</th>
               <th scope="col">Spending</th>
+              {hasActual && <th scope="col">Assigned</th>}
+              {hasActual && <th scope="col">Month-end available</th>}
             </tr>
           </thead>
           <tbody>
@@ -329,6 +445,27 @@ export function CategoryDetail({
                   {m.excluded ? " · excluded from planning" : ""}
                 </td>
                 <td>{money(m.amount)}</td>
+                {hasActual && (
+                  <td>
+                    {actualByMonth.get(m.month)?.assigned == null
+                      ? "—"
+                      : money(actualByMonth.get(m.month)!.assigned!)}
+                  </td>
+                )}
+                {hasActual && (
+                  <td
+                    className={
+                      actualByMonth.get(m.month)?.overspent ? "short" : ""
+                    }
+                  >
+                    {actualByMonth.get(m.month)?.endBalance == null
+                      ? "—"
+                      : money(actualByMonth.get(m.month)!.endBalance!)}
+                    {actualByMonth.get(m.month)?.overspent
+                      ? " · overspent"
+                      : ""}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -342,21 +479,17 @@ export function CategoryDetail({
       {plan.type !== "oneoff" && (
         <button
           className="apply"
-          disabled={
-            plan.recommendation === null ||
-            plan.proposed === plan.recommendation
-          }
+          disabled={suggestion === null || plan.proposed === suggestion}
           onClick={() =>
-            plan.recommendation !== null &&
-            onChange({ target: plan.recommendation })
+            suggestion !== null && onChange({ target: suggestion })
           }
           aria-label={`Apply recommendation for ${category.name}`}
         >
-          {plan.recommendation === null
+          {suggestion === null
             ? "Review inputs"
-            : plan.proposed === plan.recommendation
+            : plan.proposed === suggestion
               ? "Applied"
-              : `Use ${money(plan.recommendation)}`}
+              : `Use ${money(suggestion)}`}
         </button>
       )}
     </dialog>

@@ -18,6 +18,10 @@ export interface Category {
   groupId: string;
   type: "Income" | "Expense" | "Savings" | "Credit Card";
   monthlyData: Record<string, number>;
+  // Amount assigned and the month-end available balance for each loaded
+  // month. Optional because older cached data does not have them.
+  monthlyBudgeted?: Record<string, number>;
+  monthlyBalance?: Record<string, number>;
   average: number;
   total: number;
   ynabTarget: number | null;
@@ -82,6 +86,8 @@ export function transformYnabData(
         groupId: cat.category_group_id,
         type: isIncome ? "Income" : "Expense",
         monthlyData: {},
+        monthlyBudgeted: {},
+        monthlyBalance: {},
         average: 0,
         total: 0,
         ynabTarget: null,
@@ -101,7 +107,10 @@ export function transformYnabData(
           goalMap[cat.id]?.category_group_name ||
           "Archived categories",
       });
-      if (item) item.monthlyData[month.month] = cat.activity / 1000;
+      if (!item) continue;
+      item.monthlyData[month.month] = cat.activity / 1000;
+      item.monthlyBudgeted![month.month] = cat.budgeted / 1000;
+      item.monthlyBalance![month.month] = cat.balance / 1000;
     }
   // Current category metadata controls targets, grouping and names; historical goals can be stale.
   for (const cat of Object.values(goalMap)) {

@@ -7,6 +7,8 @@ export interface CloudBudgetPreferences {
     overrides: OverridesMap;
     annualReserve: number;
     incomeInput: string;
+    // Added after version 1 shipped; older saved settings leave it out.
+    cushionMonthly?: number;
   };
   sortOrder: string[];
   reimbursements: ReimbursementStore;
@@ -30,7 +32,9 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     error?: string;
   } & T;
   if (!response.ok) {
-    const error = new Error(body.error || "Could not sync your saved settings.");
+    const error = new Error(
+      body.error || "Could not sync your saved settings.",
+    );
     Object.assign(error, { status: response.status, body });
     throw error;
   }

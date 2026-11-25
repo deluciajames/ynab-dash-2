@@ -76,6 +76,7 @@ function validOverride(value) {
     "saved",
     "expectedAnnual",
     "savingsMonthly",
+    "floor",
   ];
   for (const key of numeric) {
     if (
@@ -90,6 +91,11 @@ function validOverride(value) {
     !["monthly", "annual", "irregular", "savings", "oneoff"].includes(
       value.fundingType,
     )
+  )
+    return false;
+  if (
+    value.priority !== undefined &&
+    !["essential", "flexible"].includes(value.priority)
   )
     return false;
   if (
@@ -123,7 +129,7 @@ function validOverride(value) {
     )
       return false;
   }
-  return Object.keys(value).length <= 12;
+  return Object.keys(value).length <= 14;
 }
 
 function validSettings(value) {
@@ -138,7 +144,9 @@ function validSettings(value) {
     !Number.isFinite(plan.annualReserve) ||
     plan.annualReserve < 0 ||
     typeof plan.incomeInput !== "string" ||
-    plan.incomeInput.length > 50
+    plan.incomeInput.length > 50 ||
+    (plan.cushionMonthly !== undefined &&
+      !(Number.isFinite(plan.cushionMonthly) && plan.cushionMonthly >= 0))
   )
     return false;
   const enteredIncome = plan.incomeInput.trim();
