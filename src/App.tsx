@@ -20,6 +20,13 @@ import { money } from "./lib/money";
 import { fetchAllMonthDetails, fetchCategoriesWithGoals } from "./api/ynab";
 import { transformYnabData } from "./api/transform";
 import { planCategory, totalPlan } from "./api/planning";
+import {
+  baseAmount,
+  fitToIncome,
+  sharedCushion,
+  usableRollover,
+} from "./api/fit";
+import { scoreCoverage } from "./api/coverage";
 import type { CloudBudgetPreferences } from "./api/preferences";
 import { useCloudPreferences } from "./hooks/useCloudPreferences";
 
@@ -130,7 +137,47 @@ function App({
   const totals = totalPlan(
     expenses.map((c) => plans[c.id]),
     settings.annualReserve,
+    settings.cushionMonthly,
   );
+  const planning = useMemo(() => {
+    const spending = active.categories.filter((c) => c.type !== "Income");
+    const entries = spending.map((c) => ({ id: c.id, plan: plans[c.id] }));
+    const lines = (amount: (id: string) => number) =>
+      spending.map((c) => ({
+        id: c.id,
+        category: c,
+        plan: plans[c.id],
+        amount: amount(c.id),
+      }));
+    const cushion = sharedCushion(
+      lines((id) => baseAmount(plans[id])),
+      active.availableMonths,
+    );
+    const fit = fitToIncome(entries, {
+      income: settings.income,
+      annualReserve: settings.annualReserve,
+      cushion: cushion.amount,
+    });
+    const score = (amount: (id: string) => number, cushionMonthly: number) =>
+      scoreCoverage(lines(amount), cushionMonthly, active.availableMonths);
+    return {
+      cushion,
+      fit,
+      rollover: usableRollover(entries),
+      yourScore: score(
+        (id) => plans[id].proposed ?? 0,
+        settings.cushionMonthly,
+      ),
+      fitScore: score((id) => fit.byId[id]?.amount ?? 0, fit.cushion),
+    };
+  }, [
+    active.categories,
+    active.availableMonths,
+    plans,
+    settings.income,
+    settings.annualReserve,
+    settings.cushionMonthly,
+  ]);
   const targetMap = Object.fromEntries(
     expenses.map((c) => [c.id, plans[c.id].proposed ?? 0]),
   );
@@ -148,6 +195,7 @@ function App({
         overrides: settings.overrides,
         annualReserve: settings.annualReserve,
         incomeInput: settings.incomeInput,
+        cushionMonthly: settings.cushionMonthly,
       },
       sortOrder,
       reimbursements: reimbursements.store,
@@ -156,6 +204,7 @@ function App({
       settings.overrides,
       settings.annualReserve,
       settings.incomeInput,
+      settings.cushionMonthly,
       sortOrder,
       reimbursements.store,
     ],
@@ -323,6 +372,9 @@ function App({
                 onTakeHomeChange={settings.setIncomeInput}
                 annualReserve={settings.annualReserve}
                 onReserveChange={settings.setAnnualReserve}
+                cushionMonthly={settings.cushionMonthly}
+                onCushionChange={settings.setCushion}
+                planning={planning}
                 onReset={settings.resetTargets}
                 availableMonths={active.availableMonths}
               />
@@ -356,6 +408,7 @@ function App({
                   takeHome={settings.income}
                   targetMap={targetMap}
                   reserveMonthly={settings.annualReserve / 12}
+                  cushionMonthly={settings.cushionMonthly}
                 />
               </>
             )}
@@ -385,6 +438,10 @@ function App({
               ?.name || ""
           }
           plan={plans[selectedCategory.id]}
+          fitAmount={planning.fit.byId[selectedCategory.id]?.amount ?? null}
+          yourCoverage={planning.yourScore.byCategory[selectedCategory.id]}
+          fitCoverage={planning.fitScore.byCategory[selectedCategory.id]}
+          coverageMonths={planning.fitScore.months}
           override={settings.overrides[selectedCategory.id] || {}}
           onChange={(change) =>
             settings.setOverride(selectedCategory.id, change)

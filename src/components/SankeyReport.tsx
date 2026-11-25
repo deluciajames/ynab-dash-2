@@ -13,6 +13,7 @@ interface SankeyReportProps {
   takeHome: number | null;
   targetMap: Record<string, number>;
   reserveMonthly: number;
+  cushionMonthly?: number;
 }
 
 interface SankeyNode {
@@ -57,6 +58,7 @@ export function SankeyReport({
   takeHome,
   targetMap,
   reserveMonthly,
+  cushionMonthly = 0,
 }: SankeyReportProps) {
   const sankeyData = useMemo(() => {
     if (!takeHome || takeHome <= 0) return null;
@@ -126,6 +128,15 @@ export function SankeyReport({
       links.push({ source: "Plan", target: "Reserve", value: reserveMonthly });
       totalExpenseTarget += reserveMonthly;
     }
+    if (cushionMonthly > 0) {
+      nodes.push({
+        id: "Cushion",
+        nodeColor: "#5f8f86",
+        nodeLabel: "Shared cushion",
+      });
+      links.push({ source: "Plan", target: "Cushion", value: cushionMonthly });
+      totalExpenseTarget += cushionMonthly;
+    }
     if (totalExpenseTarget > 0)
       links.push({
         source: "TakeHome",
@@ -162,7 +173,7 @@ export function SankeyReport({
     if (links.length === 0) return null;
 
     return { nodes, links };
-  }, [categories, groups, takeHome, targetMap, reserveMonthly]);
+  }, [categories, groups, takeHome, targetMap, reserveMonthly, cushionMonthly]);
 
   if (!sankeyData) {
     return (
@@ -183,7 +194,9 @@ export function SankeyReport({
   return (
     <div className="report-panel">
       {takeHome !== null &&
-        Object.values(targetMap).reduce((s, n) => s + n, 0) + reserveMonthly >
+        Object.values(targetMap).reduce((s, n) => s + n, 0) +
+          reserveMonthly +
+          cushionMonthly >
           takeHome && (
           <p className="report-warning">
             Your plan exceeds your income. The red unfunded amount needs

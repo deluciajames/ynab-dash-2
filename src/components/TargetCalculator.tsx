@@ -9,6 +9,7 @@ import {
 import { applySortOrder } from "../hooks/useGroupSortOrder";
 import { money } from "../lib/money";
 import { AmountInput } from "./AmountInput";
+import { FitPanel, type Planning } from "./FitPanel";
 
 interface Props {
   categories: Category[];
@@ -24,6 +25,9 @@ interface Props {
   onTakeHomeChange: (value: string) => void;
   annualReserve: number;
   onReserveChange: (value: number) => void;
+  cushionMonthly: number;
+  onCushionChange: (value: number) => void;
+  planning: Planning;
   onReset: () => void;
   availableMonths: string[];
 }
@@ -42,6 +46,9 @@ export function TargetCalculator({
   onTakeHomeChange,
   annualReserve,
   onReserveChange,
+  cushionMonthly,
+  onCushionChange,
+  planning,
   onReset,
   availableMonths,
 }: Props) {
@@ -63,6 +70,7 @@ export function TargetCalculator({
   const totals = totalPlan(
       expenseCategories.map((c) => plans[c.id]),
       annualReserve,
+      cushionMonthly,
     ),
     left = takeHome === null ? null : takeHome - totals.total;
   const confirmed = totals.missingTargets === 0 && takeHome !== null,
@@ -154,15 +162,16 @@ export function TargetCalculator({
       </select>
     );
   };
+  // The suggestion is the line's amount in the fit plan: its typical month,
+  // trimmed only if the whole plan has to come down to fit income.
+  const suggestion = (c: Category) =>
+    plans[c.id].type === "oneoff" || plans[c.id].recommendation === null
+      ? null
+      : (planning.fit.byId[c.id]?.amount ?? plans[c.id].recommendation);
   const apply = (cs: Category[]) => {
-    const eligible = cs.filter(
-      (c) =>
-        plans[c.id].recommendation !== null && plans[c.id].type !== "oneoff",
-    );
+    const eligible = cs.filter((c) => suggestion(c) !== null);
     onSetOverrides(
-      Object.fromEntries(
-        eligible.map((c) => [c.id, { target: plans[c.id].recommendation! }]),
-      ),
+      Object.fromEntries(eligible.map((c) => [c.id, { target: suggestion(c)! }])),
     );
     setNotice(
       `Suggestions applied to ${eligible.length} ${eligible.length === 1 ? "category" : "categories"}. Your YNAB budget stays unchanged.`,
@@ -170,17 +179,26 @@ export function TargetCalculator({
   };
   const applyButton = (c: Category) => {
     const p = plans[c.id],
-      done = p.recommendation === p.proposed;
-    return p.recommendation === null ? (
+      amount = suggestion(c),
+      line = planning.fit.byId[c.id],
+      trimmed = amount !== null && !!line && line.cut > 0,
+      done = amount === p.proposed;
+    return amount === null ? (
       <span className="pending">Review inputs</span>
     ) : (
       <button
         className="apply"
         disabled={done}
         aria-label={`Apply recommendation for ${c.name}`}
-        onClick={() => onSetOverride(c.id, { target: p.recommendation! })}
+        title={
+          trimmed
+            ? `Trimmed from ${money(line!.base)} to fit your income`
+            : undefined
+        }
+        onClick={() => onSetOverride(c.id, { target: amount })}
       >
-        {done ? "Applied" : `Use ${money(p.recommendation)}`}
+        {done ? "Applied" : `Use ${money(amount)}`}
+        {trimmed && !done ? " · trimmed" : ""}
       </button>
     );
   };
@@ -234,7 +252,8 @@ export function TargetCalculator({
             {money(totals.total)}
           </div>
           <small>
-            Includes {money(annualReserve / 12)}/mo for the unexpected
+            Includes {money(cushionMonthly)}/mo shared cushion and{" "}
+            {money(annualReserve / 12)}/mo One-Off reserve
           </small>
         </section>
         <section className={`card room ${over ? "negative" : ""}`}>
@@ -284,6 +303,22 @@ export function TargetCalculator({
           )}
         </span>
       </div>
+      <FitPanel
+        planning={planning}
+        categories={expenseCategories}
+        plans={plans}
+        takeHome={takeHome}
+        cushionMonthly={cushionMonthly}
+        onCushionChange={onCushionChange}
+        onSelectCategory={onSelectCategory}
+        onApply={() => {
+          apply(ongoing);
+          onCushionChange(planning.fit.cushion);
+          setNotice(
+            "Fit plan applied to every ongoing line and the shared cushion. Your YNAB budget stays unchanged.",
+          );
+        }}
+      />
       <div className="toolbar">
         <h2>Ongoing category groups</h2>
         <div className="filters" aria-label="Filter categories">
@@ -364,7 +399,10 @@ export function TargetCalculator({
                   "Your plan",
                   "Your sandbox amount. It starts at the YNAB target and never changes YNAB.",
                 ],
-                ["Suggestion", "Estimated need, rounded up to $5"],
+                [
+                  "Suggestion",
+                  "The line's amount in the fit plan: estimated need rounded up to $5, trimmed only if the plan has to fit your income",
+                ],
                 ["Plan as", "Ongoing categories get a monthly plan; one-off ones do not"],
               ].map(([label, help]) => (
                 <th scope="col" key={label} title={help || undefined}>
@@ -377,11 +415,9 @@ export function TargetCalculator({
             {listed.map(({ g, active, shown }) => {
               const t = groupTotals(active),
                 expanded = (filtering && autoOpen) || opened.has(g.id),
-                eligible = active.filter(
-                  (c) => plans[c.id].recommendation !== null,
-                ),
+                eligible = active.filter((c) => suggestion(c) !== null),
                 done = eligible.every(
-                  (c) => plans[c.id].recommendation === plans[c.id].proposed,
+                  (c) => suggestion(c) === plans[c.id].proposed,
                 );
               return (
                 <Fragment key={g.id}>
@@ -457,6 +493,27 @@ export function TargetCalculator({
                                     ? "Savings"
                                     : "Monthly"}
                             </span>
+                            <button
+                              className={`priority ${p.priority}`}
+                              aria-label={`${c.name} is ${p.priority}. Switch to ${p.priority === "flexible" ? "essential" : "flexible"}`}
+                              title={
+                                p.priority === "flexible"
+                                  ? `Flexible: can be trimmed to fit income, down to ${money(p.floor)}. Click to mark essential.`
+                                  : "Essential: never trimmed to fit income. Click to mark flexible."
+                              }
+                              onClick={() =>
+                                onSetOverride(c.id, {
+                                  priority:
+                                    p.priority === "flexible"
+                                      ? "essential"
+                                      : "flexible",
+                                })
+                              }
+                            >
+                              {p.priority === "flexible"
+                                ? "Flexible"
+                                : "Essential"}
+                            </button>
                           </td>
                           <td>
                             {p.need === null ? "Review" : money(p.need)}
@@ -669,7 +726,7 @@ export function TargetCalculator({
               : takeHome === null
                 ? "Enter income to check your plan."
                 : over
-                  ? `Reduce this plan by ${money(Math.abs(left!))} to fit your income.`
+                  ? `Your plan is ${money(Math.abs(left!))} over your income. Where to cut, above, shows which lines to trim.`
                   : `Your plan fits, with ${money(left!)} left.`}
           </strong>
           <p>Try changes here. Your YNAB budget stays unchanged.</p>
@@ -679,7 +736,7 @@ export function TargetCalculator({
           onClick={() => {
             onReset();
             setNotice(
-              "Your plan is reset to your YNAB targets. Category purposes, exclusions and reserve are preserved.",
+              "Your plan is reset to your YNAB targets with no shared cushion. Category purposes, essential or flexible choices, exclusions and reserve are preserved.",
             );
           }}
         >
@@ -690,8 +747,9 @@ export function TargetCalculator({
         {notice}
       </p>
       <p className="caption">
-        Click a category name for details. Your plan is saved in this browser
-        for the selected budget.
+        Click a category name for details, or Flexible / Essential to change
+        whether it can be trimmed. Your plan is saved in this browser for the
+        selected budget.
       </p>
     </>
   );
