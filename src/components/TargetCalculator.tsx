@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from "react";
 import type { Category, CategoryGroup } from "../api/transform";
 import {
+  currentContribution,
   isOngoing,
   totalPlan,
   type CategoryOverride,
@@ -58,6 +59,9 @@ export function TargetCalculator({
   const [opened, setOpened] = useState<Set<string>>(new Set()),
     [offOpened, setOffOpened] = useState<Set<string>>(new Set());
   const [view, setView] = useState<View>("categories");
+  // null until the person opens or closes it; it starts open when an ended
+  // category still has a target or money in YNAB.
+  const [endedOpen, setEndedOpen] = useState<boolean | null>(null);
   const [filter, setFilter] = useState<Filter>("all"),
     [query, setQuery] = useState(""),
     [autoOpen, setAutoOpen] = useState(true),
@@ -115,6 +119,18 @@ export function TargetCalculator({
   const ongoing = expenseCategories.filter((c) => isOngoing(plans[c.id].type)),
     oneOff = expenseCategories.filter((c) => plans[c.id].type === "oneoff"),
     ended = expenseCategories.filter((c) => plans[c.id].type === "ended");
+  // What an ended category still holds in YNAB: a target that keeps asking
+  // for money each month, and money already sitting in it. Both can be
+  // moved to other categories.
+  const leftover = (c: Category) => ({
+    target: (c.ynabTarget ?? 0) > 0,
+    monthly: (c.ynabTarget ?? 0) > 0 ? currentContribution(c) : null,
+    available: Math.max(0, c.balance),
+  });
+  const cleanup = ended.filter((c) => {
+    const l = leftover(c);
+    return l.target || l.available > 0;
+  });
   // Group-wide changes leave ended categories alone.
   const notEnded = (cs: Category[]) =>
     cs.filter((c) => plans[c.id].type !== "ended");
@@ -246,6 +262,22 @@ export function TargetCalculator({
       ? values.reduce((s, p) => s + p.proposed!, 0)
       : null;
     return { need, current, proposed };
+  };
+  const stillInYnab = (c: Category) => {
+    const l = leftover(c),
+      parts = [
+        l.target
+          ? l.monthly !== null
+            ? `Target ${money(l.monthly)}/mo`
+            : "Target set"
+          : "",
+        l.available > 0 ? `${money(l.available)} available` : "",
+      ].filter(Boolean);
+    return parts.length ? (
+      <span className="short">{parts.join(" · ")}</span>
+    ) : (
+      <span className="pending">Cleared</span>
+    );
   };
   const applyFitPlan = () => {
     apply(ongoing);
@@ -748,9 +780,19 @@ export function TargetCalculator({
             totals include categories hidden by filters.
           </p>
           {ended.length > 0 && (
-            <details className="ended-section">
+            <details
+              className="ended-section"
+              open={endedOpen ?? cleanup.length > 0}
+              onToggle={(e) => setEndedOpen(e.currentTarget.open)}
+            >
               <summary>
                 Ended ({ended.length}) · cancelled or finished, planned at $0
+                {cleanup.length > 0 && (
+                  <span className="short">
+                    {" "}
+                    · {cleanup.length} still set up in YNAB
+                  </span>
+                )}
               </summary>
               <p className="caption">
                 Cancelled subscriptions, paid-off loans and anything else that
@@ -758,17 +800,56 @@ export function TargetCalculator({
                 plan, the fit plan and One-Off spending. Choose Ongoing or
                 One-off to bring one back.
               </p>
+              {cleanup.length > 0 && (
+                <p className="filter-strip warning-notice">
+                  <span>
+                    <strong>
+                      {cleanup.length === 1
+                        ? "1 ended category still has"
+                        : `${cleanup.length} ended categories still have`}{" "}
+                      {[
+                        cleanup.some((c) => leftover(c).target)
+                          ? (() => {
+                              const monthly = cleanup.reduce(
+                                (s, c) => s + (leftover(c).monthly ?? 0),
+                                0,
+                              );
+                              return monthly > 0
+                                ? cleanup.filter((c) => leftover(c).target)
+                                    .length === 1
+                                  ? `a ${money(monthly)}/mo YNAB target`
+                                  : `${money(monthly)}/mo of YNAB targets`
+                                : "a YNAB target";
+                            })()
+                          : "",
+                        cleanup.some((c) => leftover(c).available > 0)
+                          ? `${money(cleanup.reduce((s, c) => s + leftover(c).available, 0))} available`
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" and ")}
+                    </strong>
+                    <small>
+                      Remove the target in YNAB and move what’s left to another
+                      category to put that money back to work.
+                    </small>
+                  </span>
+                </p>
+              )}
               <div className="off-table">
                 <table>
                   <thead>
                     <tr>
-                      {["Category", "Recorded spending", "Plan as"].map(
-                        (label) => (
-                          <th scope="col" key={label}>
-                            {label}
-                          </th>
-                        ),
-                      )}
+                      {[
+                        "Category",
+                        "Recorded spending",
+                        "Still in YNAB",
+                        "Plan as",
+                      ].map((label) => (
+                        <th scope="col" key={label}>
+                          {label}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
@@ -786,6 +867,7 @@ export function TargetCalculator({
                           </small>
                         </td>
                         <td>{money(plans[c.id].rawTotal)}</td>
+                        <td>{stillInYnab(c)}</td>
                         <td>{planAs([c], c.name)}</td>
                       </tr>
                     ))}

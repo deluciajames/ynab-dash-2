@@ -171,7 +171,10 @@ with sync_playwright() as p:
     assert cloud_records['mock-budget']['settings']['plan']['overrides'][groceries_id]['ended'] is True
     page.reload(wait_until='networkidle')
     expect(page.locator('#total')).to_have_text('$11,175')
-    page.locator('.ended-section summary').click()
+    # Groceries still has a YNAB target and money available, so the section opens and flags it.
+    expect(page.locator('.ended-section')).to_have_attribute('open','')
+    expect(page.locator('.ended-section summary')).to_contain_text('1 still set up in YNAB')
+    expect(page.locator('.ended-section tbody')).to_contain_text('Target $150/mo · $300 available')
     page.locator('.ended-section').screenshot(path=str(ARTIFACTS/'ended-section.png'))
     page.locator('.ended-section').get_by_role('button',name='Groceries',exact=True).click()
     expect(page.locator('#exclusion-unavailable')).to_contain_text('ended for good')
@@ -249,6 +252,12 @@ with sync_playwright() as p:
     assert page.locator('.tablebox tr.category').count()==1
     expect(page.locator('.tablebox').get_by_role('button',name='Storage',exact=True)).to_be_visible()
     page.screenshot(path=str(ARTIFACTS/'application-no-target.png'),full_page=True)
+    # An ended category is never asked for a target.
+    page.locator('.tablebox').get_by_role('combobox',name='Plan type for Storage',exact=True).select_option('ended')
+    expect(page.locator('.tablebox')).to_contain_text('Every ongoing category has a target')
+    expect(page.locator('.ended-section tbody')).to_contain_text('$300 available')
+    page.locator('.ended-section').get_by_role('combobox',name='Plan type for Storage',exact=True).select_option('ongoing')
+    expect(page.locator('.tablebox').get_by_role('button',name='Storage',exact=True)).to_be_visible()
     # The Fit to your income filter shows only lines the fit plan changes, each with its change.
     page.get_by_role('button',name='Fit to your income',exact=True).click()
     expect(page.get_by_role('button',name='Use the fit plan')).to_be_visible()
