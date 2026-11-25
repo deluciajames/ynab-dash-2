@@ -95,6 +95,7 @@ export function FitPanel({
         <li key={c.id}>
           <button
             className="category-name"
+            aria-label={`Open ${name(c.id)} details`}
             onClick={() => {
               const cat = byId.get(c.id);
               if (cat) onSelectCategory(cat);
