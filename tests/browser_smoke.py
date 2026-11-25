@@ -89,11 +89,21 @@ with sync_playwright() as p:
     assert page.locator('.group-alert').count()==0
     reference = browser.new_page(viewport={'width':1440,'height':1250})
     reference.set_content((ROOT / 'docs/approved-design.html').read_text())
-    for selector in ['h1','.summary','.card','.card.room','.tablebox','th','.groupbutton','.oneoff-section']:
-        for prop in ['fontSize','color','backgroundColor','borderRadius']:
-            actual=page.locator(selector).first.evaluate('(el,p)=>getComputedStyle(el)[p]',prop)
-            expected=reference.locator(selector).first.evaluate('(el,p)=>getComputedStyle(el)[p]',prop)
-            assert actual == expected,(selector,prop,actual,expected)
+    def compare(selectors):
+        for selector in selectors:
+            for prop in ['fontSize','color','backgroundColor','borderRadius']:
+                actual=page.locator(selector).first.evaluate('(el,p)=>getComputedStyle(el)[p]',prop)
+                expected=reference.locator(selector).first.evaluate('(el,p)=>getComputedStyle(el)[p]',prop)
+                assert actual == expected,(selector,prop,actual,expected)
+    compare(['h1','.summary','.card','.card.room','.tablebox','th','.groupbutton'])
+    # Categories, Fit to your income and One-Off are separate tabs; only one shows at a time.
+    assert page.locator('.fit-section').count()==0 and page.locator('.oneoff-section').count()==0
+    page.get_by_role('tab',name='One-Off').click()
+    compare(['.oneoff-section'])
+    assert page.locator('.tablebox').count()==0
+    page.get_by_role('tab',name='Fit to your income').click()
+    expect(page.locator('.fit-section')).to_be_visible()
+    page.get_by_role('tab',name='Categories').click()
     reference.close()
     page.get_by_role('button',name='Toggle Future expenses',exact=True).click()
     page.screenshot(path=str(ARTIFACTS/'application-overview.png'),full_page=True)
@@ -129,21 +139,26 @@ with sync_playwright() as p:
     page.get_by_role('button',name='Close',exact=True).click()
     page.get_by_role('combobox',name='Plan type for Groceries',exact=True).select_option('oneoff')
     expect(page.locator('#total')).to_have_text('$11,175')
+    page.get_by_role('tab',name='One-Off').click()
     page.locator('.off-table').get_by_role('button',name='Groceries',exact=True).click()
     assert page.locator('.bar-amount').count()==12
     page.get_by_role('button',name='Close',exact=True).click()
     page.locator('.off-table').get_by_role('combobox',name='Plan type for Groceries',exact=True).select_option('ongoing')
     expect(page.locator('#total')).to_have_text('$11,275')
+    page.get_by_role('tab',name='Categories').click()
     page.locator('.tablebox').get_by_role('combobox',name='Plan type for Food & dining',exact=True).select_option('oneoff')
     expect(page.locator('#total')).to_have_text('$9,680')
+    page.get_by_role('tab',name='One-Off').click()
     page.locator('.off-table').get_by_role('combobox',name='Plan type for Food & dining',exact=True).select_option('ongoing')
     expect(page.locator('#total')).to_have_text('$11,275')
+    page.get_by_role('tab',name='Categories').click()
     page.get_by_role('button',name='Needs attention',exact=True).click()
     expect(page.locator('#total')).to_have_text('$11,275')
     page.get_by_role('button',name='All',exact=True).click()
     page.get_by_role('button',name='Apply recommendations for Food & dining',exact=True).click()
     page.get_by_role('button',name='Reset your plan',exact=True).click()
     expect(page.locator('#total')).to_have_text('$11,325')
+    page.get_by_role('tab',name='One-Off').click()
     page.get_by_role('spinbutton',name='Choose your yearly reserve',exact=True).fill('12000')
     page.get_by_role('spinbutton',name='Choose your yearly reserve',exact=True).press('Tab')
     expect(page.locator('#total')).to_have_text('$11,825')
@@ -158,11 +173,14 @@ with sync_playwright() as p:
     page.wait_for_load_state('networkidle')
     expect(page.locator('#remaining')).to_have_text('—')
     expect(page.locator('#income')).to_have_value('')
+    page.get_by_role('tab',name='One-Off').click()
     expect(page.get_by_role('spinbutton',name='Choose your yearly reserve',exact=True)).to_have_value('0')
     page.get_by_role('combobox',name='Budget',exact=True).select_option('mock-budget')
     page.wait_for_load_state('networkidle')
     expect(page.locator('#income')).to_have_value('10000')
+    page.get_by_role('tab',name='One-Off').click()
     expect(page.get_by_role('spinbutton',name='Choose your yearly reserve',exact=True)).to_have_value('12000')
+    page.get_by_role('tab',name='Categories').click()
     page.get_by_role('button',name='Toggle Health',exact=True).click()
     page.get_by_role('button',name='Appointments',exact=True).click()
     expect(page.locator('#spending-chart svg')).to_have_attribute('data-max','20')
@@ -197,7 +215,19 @@ with sync_playwright() as p:
     assert not page.locator('#total').inner_text().startswith('At least ')
     page.get_by_role('searchbox',name='Search categories or groups',exact=True).fill('Storage')
     expect(page.get_by_role('button',name='$0 · not set',exact=True)).to_be_visible()
+    # The No target set filter lists categories with no YNAB target, such as Storage.
+    page.get_by_role('searchbox',name='Search categories or groups',exact=True).fill('')
+    page.get_by_role('button',name='No target set',exact=True).click()
+    expect(page.locator('.filter-strip')).to_contain_text('1 category has no YNAB target · it needs about')
+    assert page.locator('.tablebox tr.category').count()==1
+    expect(page.locator('.tablebox').get_by_role('button',name='Storage',exact=True)).to_be_visible()
+    page.screenshot(path=str(ARTIFACTS/'application-no-target.png'),full_page=True)
+    # The Fit to your income filter shows only lines the fit plan changes, each with its change.
+    page.get_by_role('button',name='Fit to your income',exact=True).click()
+    expect(page.get_by_role('button',name='Use the fit plan')).to_be_visible()
+    assert page.locator('.tablebox tr.category').count()==page.locator('.tablebox .fit-note').count()
+    page.screenshot(path=str(ARTIFACTS/'application-fit-filter.png'))
     assert not errors,errors
     assert not writes,writes
-    print('Browser checks passed: 103 categories, annual funding, chart scales/labels, persisted exclusions/reasons, one-off moves/restores, group recommendations, reset, reserve, income warnings, blank contributions as $0, reports, budget isolation, mobile and keyboard dialog close. No YNAB writes.')
+    print('Browser checks passed: 103 categories, plan tabs, no-target and fit filters, annual funding, chart scales/labels, persisted exclusions/reasons, one-off moves/restores, group recommendations, reset, reserve, income warnings, blank contributions as $0, reports, budget isolation, mobile and keyboard dialog close. No YNAB writes.')
     browser.close()
