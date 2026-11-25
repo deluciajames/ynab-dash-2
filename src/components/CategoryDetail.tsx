@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Category } from "../api/transform";
 import {
   fundingLabels,
+  isOngoing,
   monthLabel,
   normalizeMonth,
   type CategoryOverride,
@@ -113,9 +114,11 @@ export function CategoryDetail({
           onChange={(e) => {
             const type = e.target.value as FundingType;
             onChange(
-              type === "oneoff"
-                ? { oneOff: true }
-                : { fundingType: type, oneOff: false },
+              type === "done"
+                ? { done: true }
+                : type === "oneoff"
+                  ? { oneOff: true, done: false }
+                  : { fundingType: type, oneOff: false, done: false },
             );
           }}
         >
@@ -164,7 +167,7 @@ export function CategoryDetail({
             This is a known fixed bill
           </label>
         )}
-        {plan.type !== "oneoff" && !plan.currentSet && (
+        {isOngoing(plan.type) && !plan.currentSet && (
           <div className="goal-inputs">
             <label>
               Monthly target (none set in YNAB)
@@ -242,7 +245,7 @@ export function CategoryDetail({
         {plan.type === "monthly" && (
           <span style={{ color: "#8a9690" }}>■ Excluded from planning</span>
         )}
-        {plan.type !== "oneoff" && (
+        {isOngoing(plan.type) && (
           <>
             <span style={{ color: "#a2633e" }}>– – YNAB target</span>
             <span style={{ color: "#236d59" }}>··· Your plan</span>
@@ -307,9 +310,11 @@ export function CategoryDetail({
         </details>
       ) : (
         <p id="exclusion-unavailable">
-          {plan.type === "oneoff"
-            ? "Historical spending is retained; the entire category is excluded from ongoing targets."
-            : "Month exclusions are for ordinary monthly spending. Annual and irregular funding use expected costs instead, so a bill month cannot silently disappear."}
+          {plan.type === "done"
+            ? "This category is finished for good. Its history is kept, but it plans at $0 and stays out of One-Off spending."
+            : plan.type === "oneoff"
+              ? "Historical spending is retained; the entire category is excluded from ongoing targets."
+              : "Month exclusions are for ordinary monthly spending. Annual and irregular funding use expected costs instead, so a bill month cannot silently disappear."}
         </p>
       )}
       <details className="chart-values">
@@ -335,11 +340,11 @@ export function CategoryDetail({
         </table>
       </details>
       <p className="history-note">
-        {plan.type === "oneoff"
+        {!isOngoing(plan.type)
           ? `Recorded spending in the loaded history: ${money(plan.rawTotal)}. No repeat monthly allocation.`
           : "Target vs. need = YNAB target − estimated monthly need. A positive amount is a review opportunity; money already saved for obligations remains committed."}
       </p>
-      {plan.type !== "oneoff" && (
+      {isOngoing(plan.type) && (
         <button
           className="apply"
           disabled={

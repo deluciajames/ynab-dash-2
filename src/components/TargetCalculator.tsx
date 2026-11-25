@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from "react";
 import type { Category, CategoryGroup } from "../api/transform";
 import {
+  isOngoing,
   totalPlan,
   type CategoryOverride,
   type CategoryPlan,
@@ -90,10 +91,12 @@ export function TargetCalculator({
       kind(plans[c.id]) === filter
     );
   };
-  const ongoing = expenseCategories.filter(
-      (c) => plans[c.id].type !== "oneoff",
-    ),
-    oneOff = expenseCategories.filter((c) => plans[c.id].type === "oneoff");
+  const ongoing = expenseCategories.filter((c) => isOngoing(plans[c.id].type)),
+    oneOff = expenseCategories.filter((c) => plans[c.id].type === "oneoff"),
+    done = expenseCategories.filter((c) => plans[c.id].type === "done");
+  // Group-wide changes leave finished categories alone.
+  const notDone = (cs: Category[]) =>
+    cs.filter((c) => plans[c.id].type !== "done");
   const listed = expenseGroups
     .map((g) => ({ g, active: ongoing.filter((c) => c.groupId === g.id) }))
     .map((x) => ({ ...x, shown: x.active.filter((c) => matches(c, x.g)) }))
@@ -115,49 +118,60 @@ export function TargetCalculator({
     setOpened(base);
     setAutoOpen(false);
   };
-  const mark = (cs: Category[], oneOffValue: boolean) => {
+  const mark = (cs: Category[], to: "ongoing" | "oneoff" | "done") => {
     onSetOverrides(
       Object.fromEntries(
         cs.map((c) => [
           c.id,
           {
-            oneOff: oneOffValue,
-            ...(!oneOffValue && overrides[c.id]?.fundingType === "oneoff"
+            done: to === "done",
+            ...(to === "done" ? {} : { oneOff: to === "oneoff" }),
+            ...(to === "ongoing" && overrides[c.id]?.fundingType === "oneoff"
               ? { fundingType: "monthly" as const }
               : {}),
           },
         ]),
       ),
     );
-    if (oneOffValue)
-      setOffOpened((old) => new Set([...old, ...cs.map((c) => c.groupId)]));
-    else setOpened((old) => new Set([...old, ...cs.map((c) => c.groupId)]));
+    const groupIds = cs.map((c) => c.groupId);
+    if (to === "oneoff") setOffOpened((old) => new Set([...old, ...groupIds]));
+    if (to === "ongoing") setOpened((old) => new Set([...old, ...groupIds]));
+    const who = cs.length === 1 ? cs[0].name : `${cs.length} categories`;
     setNotice(
-      `${cs.length === 1 ? cs[0].name : `${cs.length} categories`} ${oneOffValue ? "moved to One-Off. History is preserved." : "returned to the ongoing plan."}`,
+      to === "oneoff"
+        ? `${who} moved to One-Off. History is preserved.`
+        : to === "done"
+          ? `${who} marked Done. ${cs.length === 1 ? "It plans" : "They plan"} at $0 and ${cs.length === 1 ? "is" : "are"} listed under Done.`
+          : `${who} returned to the ongoing plan.`,
     );
   };
   const planAs = (cs: Category[], label: string) => {
-    const off = cs.filter((c) => plans[c.id].type === "oneoff").length,
-      value = off === cs.length ? "oneoff" : off ? "mixed" : "ongoing";
+    if (!cs.length) return null;
+    const types = new Set(
+      cs.map((c) => (isOngoing(plans[c.id].type) ? "ongoing" : plans[c.id].type)),
+    );
+    const value = types.size === 1 ? [...types][0] : "mixed";
     return (
       <select
         className="plan-type"
         aria-label={`Plan type for ${label}`}
         value={value}
         onChange={(e) => {
-          if (e.target.value !== "mixed") mark(cs, e.target.value === "oneoff");
+          const to = e.target.value;
+          if (to === "ongoing" || to === "oneoff" || to === "done") mark(cs, to);
         }}
       >
         {value === "mixed" && <option value="mixed">Mixed</option>}
         <option value="ongoing">Ongoing</option>
         <option value="oneoff">One-off</option>
+        <option value="done">Done</option>
       </select>
     );
   };
   const apply = (cs: Category[]) => {
     const eligible = cs.filter(
       (c) =>
-        plans[c.id].recommendation !== null && plans[c.id].type !== "oneoff",
+        plans[c.id].recommendation !== null && isOngoing(plans[c.id].type),
     );
     onSetOverrides(
       Object.fromEntries(
@@ -427,7 +441,9 @@ export function TargetCalculator({
                     </td>
                     <td>
                       {planAs(
-                        expenseCategories.filter((c) => c.groupId === g.id),
+                        notDone(
+                          expenseCategories.filter((c) => c.groupId === g.id),
+                        ),
                         g.name,
                       )}
                     </td>
@@ -606,7 +622,9 @@ export function TargetCalculator({
                       <td>No repeat allocation</td>
                       <td>
                         {planAs(
-                          expenseCategories.filter((c) => c.groupId === g.id),
+                          notDone(
+                            expenseCategories.filter((c) => c.groupId === g.id),
+                          ),
                           g.name,
                         )}
                       </td>
@@ -661,6 +679,50 @@ export function TargetCalculator({
           window.
         </p>
       </section>
+      {done.length > 0 && (
+        <details className="done-section">
+          <summary>
+            Done ({done.length}) · finished for good, planned at $0
+          </summary>
+          <p className="caption">
+            Paid off or stopped, and not coming back. These stay out of your
+            plan and out of One-Off spending. Choose another type to bring one
+            back.
+          </p>
+          <div className="off-table">
+            <table>
+              <thead>
+                <tr>
+                  {["Category", "Recorded spending", "Plan as"].map((label) => (
+                    <th scope="col" key={label}>
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {done.map((c) => (
+                  <tr key={c.id} className="category">
+                    <td>
+                      <button
+                        className="category-name"
+                        onClick={() => onSelectCategory(c)}
+                      >
+                        {c.name}
+                      </button>
+                      <small>
+                        {groups.find((g) => g.id === c.groupId)?.name ?? ""}
+                      </small>
+                    </td>
+                    <td>{money(plans[c.id].rawTotal)}</td>
+                    <td>{planAs([c], c.name)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
       <div className="footer">
         <div>
           <strong>

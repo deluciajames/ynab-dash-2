@@ -94,6 +94,7 @@ function validOverride(value) {
     return false;
   if (
     (value.oneOff !== undefined && typeof value.oneOff !== "boolean") ||
+    (value.done !== undefined && typeof value.done !== "boolean") ||
     (value.fixedBill !== undefined && typeof value.fixedBill !== "boolean") ||
     (value.dueDate !== undefined &&
       typeof value.dueDate !== "string" &&
@@ -123,7 +124,7 @@ function validOverride(value) {
     )
       return false;
   }
-  return Object.keys(value).length <= 12;
+  return Object.keys(value).length <= 13;
 }
 
 function validSettings(value) {

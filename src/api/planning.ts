@@ -5,13 +5,16 @@ export type FundingType =
   | "annual"
   | "irregular"
   | "savings"
-  | "oneoff";
+  | "oneoff"
+  | "done";
 export interface CategoryOverride {
   target?: number;
   currentMonthly?: number | null;
   fundingType?: FundingType;
   // One-off classification preserves the original funding type and proposed amount for undo.
   oneOff?: boolean;
+  // Finished for good (a paid-off loan): $0, and kept out of One-Off spending.
+  done?: boolean;
   fixedBill?: boolean;
   excludedMonths?: string[];
   exclusionReasons?: Record<string, string>;
@@ -28,7 +31,11 @@ export const fundingLabels: Record<FundingType, string> = {
   irregular: "Irregular expense",
   savings: "Savings goal",
   oneoff: "One-off",
+  done: "Done",
 };
+/** Whether a category still gets a monthly plan (not One-off or Done). */
+export const isOngoing = (type: FundingType) =>
+  type !== "oneoff" && type !== "done";
 const finiteAmount = (n: number | null | undefined): n is number =>
   typeof n === "number" && Number.isFinite(n) && n >= 0;
 export function normalizeMonth(month: string): string {
@@ -80,6 +87,7 @@ export function fundingType(
   cat: Category,
   ov: CategoryOverride = {},
 ): FundingType {
+  if (ov.done) return "done";
   if (ov.oneOff || ov.fundingType === "oneoff") return "oneoff";
   if (ov.fundingType) return ov.fundingType;
   if (cat.hidden && ov.oneOff !== false) return "oneoff";
@@ -189,7 +197,12 @@ export function planCategory(
     explanation = "",
     method = "",
     warning = "";
-  if (type === "oneoff") {
+  if (type === "done") {
+    need = 0;
+    method = "Finished";
+    explanation =
+      "This category is finished for good. It plans at $0 and is left out of One-Off spending.";
+  } else if (type === "oneoff") {
     need = 0;
     method = "No repeat allocation";
     explanation =
@@ -238,9 +251,9 @@ export function planCategory(
   if (need === null && !warning)
     warning = "Review the planning inputs before accepting a recommendation.";
   const recommendation =
-    need === null || type === "oneoff" ? null : Math.ceil(need / 5) * 5;
+    need === null || !isOngoing(type) ? null : Math.ceil(need / 5) * 5;
   const proposed =
-    type === "oneoff" ? 0 : finiteAmount(ov.target) ? ov.target : current;
+    !isOngoing(type) ? 0 : finiteAmount(ov.target) ? ov.target : current;
   const discrepancy = need !== null ? current - need : null;
   return {
     type,
@@ -269,7 +282,7 @@ export function planCategory(
 }
 export type CategoryPlan = ReturnType<typeof planCategory>;
 export function totalPlan(plans: CategoryPlan[], annualReserve: number) {
-  const active = plans.filter((p) => p.type !== "oneoff");
+  const active = plans.filter((p) => isOngoing(p.type));
   return {
     total:
       active.reduce((s, p) => s + (p.proposed ?? 0), 0) + annualReserve / 12,

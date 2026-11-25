@@ -1907,3 +1907,24 @@ dialog {
     width: 100%;
   }
 }
+
+/* Done: categories finished for good */
+.done-section {
+  margin-top: 18px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 18px;
+}
+.done-section summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+.done-section .caption {
+  margin: 10px 0;
+}
+.done-section .category small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}

@@ -57,6 +57,7 @@ function read(budgetId: string | null): Settings {
         clean.fundingType = candidate.fundingType;
       if (typeof candidate.oneOff === "boolean")
         clean.oneOff = candidate.oneOff;
+      if (typeof candidate.done === "boolean") clean.done = candidate.done;
       if (typeof candidate.fixedBill === "boolean")
         clean.fixedBill = candidate.fixedBill;
       if (Array.isArray(candidate.excludedMonths))

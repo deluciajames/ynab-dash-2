@@ -1,4 +1,9 @@
-import { chartScale, monthLabel, type CategoryPlan } from "../api/planning";
+import {
+  chartScale,
+  isOngoing,
+  monthLabel,
+  type CategoryPlan,
+} from "../api/planning";
 import { money } from "../lib/money";
 
 export function SpendingChart({
@@ -19,7 +24,7 @@ export function SpendingChart({
   const peak = Math.max(
     0,
     ...plan.history.map((m) => m.amount),
-    ...(plan.type === "oneoff" ? [] : [plan.current ?? 0, plan.proposed ?? 0]),
+    ...(!isOngoing(plan.type) ? [] : [plan.current ?? 0, plan.proposed ?? 0]),
   );
   const scale = chartScale(Math.max(peak, -negative));
   const max = peak === 0 && negative < 0 ? 0 : scale.max,
@@ -68,7 +73,7 @@ export function SpendingChart({
                 height={Math.abs(ys(m.amount) - ys(0))}
                 rx={3}
                 fill={
-                  plan.type === "oneoff" || m.excluded ? "#b9c2bd" : "#6c9d85"
+                  !isOngoing(plan.type) || m.excluded ? "#b9c2bd" : "#6c9d85"
                 }
                 role={clickable ? "button" : undefined}
                 tabIndex={clickable ? 0 : undefined}
@@ -99,7 +104,7 @@ export function SpendingChart({
             </g>
           );
         })}
-        {plan.type !== "oneoff" && plan.current !== null && (
+        {isOngoing(plan.type) && plan.current !== null && (
           <line
             x1={left}
             x2={w - 16}
@@ -110,7 +115,7 @@ export function SpendingChart({
             strokeWidth={1.7}
           />
         )}
-        {plan.type !== "oneoff" && plan.proposed !== null && (
+        {isOngoing(plan.type) && plan.proposed !== null && (
           <line
             x1={left}
             x2={w - 16}

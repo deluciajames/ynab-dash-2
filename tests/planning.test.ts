@@ -8,6 +8,7 @@ import {
   planCategory,
   totalPlan,
   fundingType,
+  isOngoing,
   goalPeriodMonths,
 } from "../src/api/planning.ts";
 import { transformYnabData } from "../src/api/transform.ts";
@@ -390,4 +391,30 @@ test("refunds offset historical spending without generating a negative funding r
   assert.equal(p.rawAverage, 0);
   assert.ok(p.need! >= 0);
   assert.equal(planCategory(category([-100, -200]), {}, today).need, 0);
+});
+
+test("Done categories plan at $0 and stay out of totals and One-Off", () => {
+  const c = category();
+  const p = planCategory(c, { done: true, target: 200 }, today);
+  assert.equal(p.type, "done");
+  assert.equal(p.need, 0);
+  assert.equal(p.proposed, 0);
+  assert.equal(p.recommendation, null);
+  // History is kept for reference.
+  assert.equal(p.rawTotal, 1200);
+  assert.equal(isOngoing(p.type), false);
+  assert.equal(isOngoing("oneoff"), false);
+  assert.equal(isOngoing("monthly"), true);
+  const ongoing = planCategory(c, { target: 150 }, today);
+  assert.equal(totalPlan([p, ongoing], 0).total, 150);
+  // Done wins over One-off and over being hidden in YNAB.
+  assert.equal(fundingType(c, { done: true, oneOff: true }), "done");
+  assert.equal(fundingType(category(undefined, { hidden: true }), { done: true }), "done");
+  // Clearing Done brings back the previous choice.
+  assert.equal(fundingType(c, { done: false, oneOff: true }), "oneoff");
+  assert.equal(fundingType(c, { done: false, target: 200 }), "monthly");
+  assert.equal(
+    planCategory(c, { done: false, target: 200 }, today).proposed,
+    200,
+  );
 });

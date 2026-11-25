@@ -12,6 +12,7 @@ Connect to YNAB with your personal access token, then select a budget. Groups st
 - **Irregular expenses** use an expected yearly amount divided by 12. A full year of history can provide a starting estimate. Review starting reserves and bill timing; this alone does not guarantee that an early expense is covered.
 - **Savings goals** use a chosen contribution, rather than their spending activity.
 - **One-Off** categories keep their history but have no recurring allocation. A separate yearly reserve is included once in the monthly plan.
+- **Done** categories are finished for good, such as a paid-off loan or a payment you were told to stop. They plan at $0, are left out of totals, suggestions and One-Off spending (so they don't inflate the evidence for your reserve), and are listed in a collapsed **Done** section where you can switch one back. Choose Done from a category's **Plan as** menu or its popup; changing a whole group's type leaves its Done categories alone. Hidden categories still start in One-Off.
 
 After you sign in, category purposes, target edits, exclusions, income, reserves, group order, and reimbursement matches are saved **per budget in your account** and sync across sessions and browsers. On the first sign-in, existing browser settings are imported when the account has no saved copy. If both copies contain different choices, the app asks which one to keep. These settings never update YNAB. Resetting your plan returns it to your YNAB targets and preserves purposes, exclusions, income and reserves.
 
