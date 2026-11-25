@@ -21,8 +21,7 @@ type SyncState =
   | { key: string; status: "error"; message: string };
 
 function stableStringify(value: unknown): string {
-  if (Array.isArray(value))
-    return `[${value.map(stableStringify).join(",")}]`;
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
   if (value && typeof value === "object")
     return `{${Object.entries(value)
       .sort(([a], [b]) => a.localeCompare(b))
@@ -40,6 +39,7 @@ function hasLocalChoices(value: CloudBudgetPreferences) {
     Object.keys(value.plan.overrides).length > 0 ||
     value.plan.incomeInput !== "" ||
     value.plan.annualReserve > 0 ||
+    (value.plan.cushionMonthly ?? 0) > 0 ||
     value.sortOrder.length > 0 ||
     store?.categoryIds !== null ||
     (store?.matches?.length ?? 0) > 0 ||
@@ -69,7 +69,8 @@ export function useCloudPreferences(
   currentKey.current = key;
   localRef.current = localSettings;
   applyRef.current = applySettings;
-  const visibleState = state.key === key ? state : { key, status: "loading" as const };
+  const visibleState =
+    state.key === key ? state : { key, status: "loading" as const };
 
   useEffect(() => {
     if (!key || !budgetId) {
@@ -221,7 +222,11 @@ export function useCloudPreferences(
   }, [key, budgetId, localSettings, visibleState.status]);
 
   const useAccountCopy = useCallback(() => {
-    if (state.key !== key || state.status !== "conflict" || !state.remote.settings)
+    if (
+      state.key !== key ||
+      state.status !== "conflict" ||
+      !state.remote.settings
+    )
       return;
     applyRef.current(state.remote.settings);
     revision.current = state.remote.revision;

@@ -6,6 +6,7 @@ export type FundingType =
   | "irregular"
   | "savings"
   | "oneoff";
+export type Priority = "essential" | "flexible";
 export interface CategoryOverride {
   target?: number;
   currentMonthly?: number | null;
@@ -20,6 +21,10 @@ export interface CategoryOverride {
   dueDate?: string;
   expectedAnnual?: number | null;
   savingsMonthly?: number | null;
+  // Essential lines are never trimmed to fit income; flexible lines can be
+  // trimmed down to their floor (the least you'd accept per month).
+  priority?: Priority;
+  floor?: number | null;
 }
 export type OverridesMap = Record<string, CategoryOverride>;
 export const fundingLabels: Record<FundingType, string> = {
@@ -29,6 +34,7 @@ export const fundingLabels: Record<FundingType, string> = {
   savings: "Savings goal",
   oneoff: "One-off",
 };
+export const FLOOR_SHARE = 0.5;
 const finiteAmount = (n: number | null | undefined): n is number =>
   typeof n === "number" && Number.isFinite(n) && n >= 0;
 export function normalizeMonth(month: string): string {
@@ -186,6 +192,7 @@ export function planCategory(
         ? setContribution
         : null;
   let need: number | null = null,
+    standaloneNeed: number | null = null,
     explanation = "",
     method = "",
     warning = "";
@@ -224,14 +231,22 @@ export function planCategory(
       "Use the amount you intend to save. Low spending from this category is not a reason to reduce your savings.";
   } else {
     if (ov.fixedBill) need = current;
-    else if (average !== null)
-      need = Math.max(0, average, percentile75(included.map((m) => m.amount)));
+    else if (average !== null) {
+      // Plan at the typical month. Bad months are covered by one shared
+      // cushion for the whole budget instead of padding every line.
+      need = Math.max(0, average);
+      standaloneNeed = Math.max(
+        0,
+        average,
+        percentile75(included.map((m) => m.amount)),
+      );
+    }
     method = ov.fixedBill
       ? "Fixed bill"
       : `${included.length} months${history.length !== included.length ? ` · ${history.length - included.length} excluded` : ""}`;
     explanation = ov.fixedBill
       ? "Keep the known fixed bill amount. History exclusions do not change the cost of the bill."
-      : "Use the larger of the planning average and the level three out of four included months fall below. Suggestions round up to $5.";
+      : "Your typical month: the average of the included months. Higher months are covered by the shared cushion, not by padding this line. Suggestions round up to $5.";
     if (history.length < 12)
       warning = `Only ${history.length} completed months of category history are available; this may miss seasonal expenses.`;
   }
@@ -242,6 +257,12 @@ export function planCategory(
   const proposed =
     type === "oneoff" ? 0 : finiteAmount(ov.target) ? ov.target : current;
   const discrepancy = need !== null ? current - need : null;
+  const priority: Priority =
+    ov.priority ??
+    (type === "monthly" && !ov.fixedBill ? "flexible" : "essential");
+  const defaultFloor =
+    need === null ? 0 : Math.floor((need * FLOOR_SHARE) / 5) * 5;
+  const floor = finiteAmount(ov.floor) ? ov.floor : defaultFloor;
   return {
     type,
     history,
@@ -252,7 +273,12 @@ export function planCategory(
     current,
     currentSet,
     need,
+    standaloneNeed: standaloneNeed ?? need,
     recommendation,
+    priority,
+    floor,
+    floorSet: finiteAmount(ov.floor),
+    fixedBill: type === "monthly" && !!ov.fixedBill,
     proposed,
     discrepancy,
     billAmount,
@@ -268,11 +294,17 @@ export function planCategory(
   };
 }
 export type CategoryPlan = ReturnType<typeof planCategory>;
-export function totalPlan(plans: CategoryPlan[], annualReserve: number) {
+export function totalPlan(
+  plans: CategoryPlan[],
+  annualReserve: number,
+  cushionMonthly = 0,
+) {
   const active = plans.filter((p) => p.type !== "oneoff");
   return {
     total:
-      active.reduce((s, p) => s + (p.proposed ?? 0), 0) + annualReserve / 12,
+      active.reduce((s, p) => s + (p.proposed ?? 0), 0) +
+      annualReserve / 12 +
+      cushionMonthly,
     missingTargets: active.filter((p) => p.proposed === null).length,
   };
 }
